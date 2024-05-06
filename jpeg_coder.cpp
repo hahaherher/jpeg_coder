@@ -68,16 +68,18 @@ void quantize(float** x, int QF) {
     }
 }
 
-vector<int, float> AC_run_length(float** block) {
-    struct SnakeBody {
-        int zeros;
-        float value;
-        SnakeBody(int z, float v){ zeros = z; value = z; };
-    };
+struct SnakeBody {
+    int zeros;
+    float value;
+    SnakeBody(int z, float v) { zeros = z; value = z; };
+};
+
+vector<SnakeBody> AC_run_length(float** block) {
     vector<SnakeBody> snake_vec;
     int sign = -1;
     int i = 1, j = 0;
-    for (int times = 1; times <= 8; times++, sign *= -1) {
+    int time_increse = 1;
+    for (int times = 1; times <= 7 && times >=0 ; times+=time_increse, sign *= -1) {
         for (int zeros = 0; i < times && j < times; i += sign, j -= sign) {
             if (block[i][j] == 0) {
                 zeros++;
@@ -93,7 +95,11 @@ vector<int, float> AC_run_length(float** block) {
         else {
             j += 1;
         }
+        if (times == 7){
+            time_increse = -1;
+        }
     }
+    return snake_vec;
 }
 
 
@@ -171,7 +177,7 @@ int main() {
         quantize(block, QF);
 
         float DC = block[0][0];
-        vector<int, float> snake_vec = AC_run_length(block);
+        vector<SnakeBody> snake_vec = AC_run_length(block);
         
         // push 8*8 block back to original image
         for (int i = 0; i < 8; i++) {
