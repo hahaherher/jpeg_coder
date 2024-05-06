@@ -68,6 +68,35 @@ void quantize(float** x, int QF) {
     }
 }
 
+vector<int, float> AC_run_length(float** block) {
+    struct SnakeBody {
+        int zeros;
+        float value;
+        SnakeBody(int z, float v){ zeros = z; value = z; };
+    };
+    vector<SnakeBody> snake_vec;
+    int sign = -1;
+    int i = 1, j = 0;
+    for (int times = 1; times <= 8; times++, sign *= -1) {
+        for (int zeros = 0; i < times && j < times; i += sign, j -= sign) {
+            if (block[i][j] == 0) {
+                zeros++;
+            }
+            else {
+                snake_vec.push_back(SnakeBody(zeros, block[i][j]));
+                zeros = 0;
+            }
+        }
+        if (sign == -1) {
+            i += 1;
+        }
+        else {
+            j += 1;
+        }
+    }
+}
+
+
 int main() {
     int choice;
     string img_name;
@@ -123,6 +152,7 @@ int main() {
 
     // scan 512 * 512 with 8 * 8 DCT
     int x_pos = 0, y_pos = 0;
+    const int QF = 50;
     while (y_pos < 512) {
         // create empty 8*8 block
         float** block = new float* [8];
@@ -137,6 +167,12 @@ int main() {
         }
         // dct processing
         dct2(block, n);
+        // Quantization
+        quantize(block, QF);
+
+        float DC = block[0][0];
+        vector<int, float> snake_vec = AC_run_length(block);
+        
         // push 8*8 block back to original image
         for (int i = 0; i < 8; i++) {
             for (int j = 0; j < 8; j++) {
@@ -154,9 +190,7 @@ int main() {
     cout << original_img[255][256] << endl;
     cout << original_img[256][256] << endl;
 
-    // Quantization
-    const int QF = 50;
-    quantize(original_img, QF);
+    
 
 
 	return 0;
