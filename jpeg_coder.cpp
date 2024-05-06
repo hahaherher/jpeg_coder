@@ -117,17 +117,17 @@ int main() {
     cout << raw_name << " Loading..." << endl;
 
     float **original_img = read_raw_img(raw_name);
-    int n = 512;
+    int n = 8;
     cout << original_img[255][256] << endl;
     cout << original_img[256][256] << endl;
 
     // scan 512 * 512 with 8 * 8 DCT
     int x_pos = 0, y_pos = 0;
-    while (y_pos < n - 8) {
+    while (y_pos < 512) {
         // create empty 8*8 block
-        float** block = new float* [n];
-        for (int i = 0; i < n; ++i) {
-            block[i] = new float[n]; // 为每行创建 float 数组
+        float** block = new float* [8];
+        for (int i = 0; i < 8; ++i) {
+            block[i] = new float[8]; // 为每行创建 float 数组
         }
         // scan 8*8 block from 512*512 image
         for (int i = 0; i < 8; i++) {
@@ -145,7 +145,7 @@ int main() {
         }
         // move to next 8*8 position
         x_pos += 8;
-        if (x_pos == 511) {
+        if (x_pos == 512) {
             y_pos += 8;
             x_pos = 0;
         }
