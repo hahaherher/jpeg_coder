@@ -1,6 +1,9 @@
 ﻿#include <iostream>
 #include <fstream>
 #include <vector>
+#include <sstream>
+#include <string>
+
 #include "dct2.h"
 
 using namespace std;
@@ -111,6 +114,56 @@ vector<SnakeBody> AC_run_length(float** block) {
 }
 
 
+struct ACData {
+    int run;
+    int code_len;
+    string codeword;
+};
+
+
+// 函數用於解析 CSV 檔案中的一行數據並返回一個結構
+vector<ACData> parseCSV(string filename) {
+
+    // 打開 CSV 檔案
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cout << "無法打開檔案" << endl;
+    }
+
+    vector<ACData> dataList; // 存儲所有行數據的向量
+
+    // 逐行讀取檔案內容
+    string line;
+    while (getline(file, line)) {
+        // 解析每一行並將數據存儲到 dataList 向量中
+        ACData data;
+        stringstream ss(line);
+        string token;
+
+        // 逐一讀取每個逗號分隔的欄位
+        getline(ss, token, ',');
+        data.run = stoi(token);
+        getline(ss, token, ',');
+        data.code_len = stoi(token);
+        getline(ss, token, ',');
+        data.codeword = token;
+        dataList.push_back(data);
+    }
+    file.close();
+
+    return dataList;
+}
+
+
+string AC_encode(vector<SnakeBody> snake_vec) {
+    string bitstring;
+    string filename = "AC_Luminance.csv";
+    vector<ACData> AC_table = parseCSV(filename);
+
+
+    return bitstring;
+}
+
 int main() {
     int choice;
     string img_name;
@@ -186,6 +239,7 @@ int main() {
 
         unsigned char DC = block[0][0];
         vector<SnakeBody> snake_vec = AC_run_length(block);
+        string codewords = AC_encode(snake_vec);
         //cout << snake_vec.size()<<endl;
         /*for (int i = 0; i < snake_vec.size();i++) {
             cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
