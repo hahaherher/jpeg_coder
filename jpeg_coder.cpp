@@ -206,6 +206,13 @@ string AC_encode(vector<SnakeBody> snake_vec) {
     return bitstring;
 }
 
+
+string DC_encode(int diff_DC) {
+    string dc_codewords;
+    return dc_codewords;
+}
+
+
 int main() {
     int choice;
     string img_name;
@@ -262,6 +269,8 @@ int main() {
     // scan 512 * 512 with 8 * 8 DCT
     int x_pos = 0, y_pos = 0;
     const int QF = 50;
+    int last_DC = 0;
+
     while (y_pos < 512) {
         // create empty 8*8 block
         float** block = new float* [8];
@@ -279,13 +288,19 @@ int main() {
         // Quantization
         quantize(block, QF);
 
-        unsigned char DC = block[0][0];
+        int diff_DC = block[0][0]-last_DC;
+        last_DC = block[0][0];
         vector<SnakeBody> snake_vec = AC_run_length(block);
         string codewords = AC_encode(snake_vec);
         //cout << snake_vec.size()<<endl;
         /*for (int i = 0; i < snake_vec.size();i++) {
             cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
         }*/
+
+        // DC encode
+        string dc_codewords = DC_encode(diff_DC);
+
+
         // push 8*8 block back to original image
         for (int i = 0; i < 8; i++) {
             for (int j = 0; j < 8; j++) {
