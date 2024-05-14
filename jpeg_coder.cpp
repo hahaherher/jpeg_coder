@@ -3,6 +3,8 @@
 #include <vector>
 #include <sstream>
 #include <string>
+#include <map>
+#include <bitset>
 
 #include "dct2.h"
 
@@ -116,7 +118,7 @@ vector<SnakeBody> AC_run_length(float** block) {
 
 struct ACData {
     int run;
-    int code_len;
+    int category;
     string codeword;
 };
 
@@ -144,7 +146,7 @@ vector<ACData> parseCSV(string filename) {
         getline(ss, token, ',');
         data.run = stoi(token);
         getline(ss, token, ',');
-        data.code_len = stoi(token);
+        data.category = stoi(token);
         getline(ss, token, ',');
         data.codeword = token;
         dataList.push_back(data);
@@ -155,11 +157,51 @@ vector<ACData> parseCSV(string filename) {
 }
 
 
+// 將整數映射到對應的二進制字符串
+string intToBinaryString(int num) {
+    if (num == 1)
+        return "1";
+    else if (num == -1)
+        return "0";
+
+    string binaryString;
+    while (num != 0) {
+        if (num % 2 == 0 && num > 0 || num % 2 != 0 && num < 0)
+            binaryString = "0" + binaryString;
+        else
+            binaryString = "1" + binaryString;
+        num /= 2;
+    }
+    return binaryString;
+}
+
 string AC_encode(vector<SnakeBody> snake_vec) {
-    string bitstring;
+    //map<int, string> conversionMap;
+    //// 建立整數到二進制字符串的映射
+    //for (int i = -15; i <= 15; ++i) {
+    //    conversionMap[i] = intToBinaryString(i);
+    //}
+
+    //// 輸出映射結果
+    //for (const auto& pair : conversionMap) {
+    //    cout << pair.first << " -> " << pair.second << endl;
+    //}
+
+    string bitstring="";
     string filename = "AC_Luminance.csv";
     vector<ACData> AC_table = parseCSV(filename);
-
+    for (SnakeBody s : snake_vec) {
+        string codeword;
+        int category = floor(log(s.value)) + 1;
+        if (s.zeros == -1) {
+            codeword = "1010";
+        }
+        else {
+            string coefficient_codeword = intToBinaryString(s.value);
+            codeword = AC_table[s.zeros * 10 + category].codeword + coefficient_codeword;
+        }
+        bitstring += codeword;
+    }
 
     return bitstring;
 }
