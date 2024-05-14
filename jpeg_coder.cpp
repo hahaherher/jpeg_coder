@@ -63,7 +63,7 @@ void quantize(float** x, int QF) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
-            x[i][j] = x[i][j] / qij;
+            x[i][j] = round(x[i][j] / qij);
         }
     }
 }
@@ -71,7 +71,7 @@ void quantize(float** x, int QF) {
 struct SnakeBody {
     int zeros;
     float value;
-    SnakeBody(int z, float v) { zeros = z; value = z; };
+    SnakeBody(int z, float v) { zeros = z; value = v; };
 };
 
 vector<SnakeBody> AC_run_length(float** block) {
@@ -79,8 +79,9 @@ vector<SnakeBody> AC_run_length(float** block) {
     int sign = -1;
     int i = 1, j = 0;
     int time_increse = 1;
+    int zeros = 0;
     for (int times = 1; times <= 7 && times >=0 ; times+=time_increse, sign *= -1) {
-        for (int zeros = 0; i < times && j < times; i += sign, j -= sign) {
+        for (int time_count = times; time_count >= 0 ;time_count--, i += sign, j -= sign) {
             if (block[i][j] == 0) {
                 zeros++;
             }
@@ -89,15 +90,22 @@ vector<SnakeBody> AC_run_length(float** block) {
                 zeros = 0;
             }
         }
-        if (sign == -1) {
-            i += 1;
-        }
-        else {
-            j += 1;
-        }
+        i -= sign;
+        j += sign;
+        
         if (times == 7){
             time_increse = -1;
         }
+        if (sign == 1 && time_increse == 1 || sign == -1 && time_increse == -1) {
+            i += 1;
+        }
+        else if(sign == -1 && time_increse == 1 || sign == 1 && time_increse == -1) {
+            j += 1;
+        }
+
+    }
+    if (block[7][7] == 0){
+        snake_vec.push_back(SnakeBody(-1, EOF));
     }
     return snake_vec;
 }
@@ -176,9 +184,12 @@ int main() {
         // Quantization
         quantize(block, QF);
 
-        float DC = block[0][0];
+        unsigned char DC = block[0][0];
         vector<SnakeBody> snake_vec = AC_run_length(block);
-        
+        //cout << snake_vec.size()<<endl;
+        /*for (int i = 0; i < snake_vec.size();i++) {
+            cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
+        }*/
         // push 8*8 block back to original image
         for (int i = 0; i < 8; i++) {
             for (int j = 0; j < 8; j++) {
@@ -195,9 +206,6 @@ int main() {
     
     cout << original_img[255][256] << endl;
     cout << original_img[256][256] << endl;
-
-    
-
 
 	return 0;
 }
