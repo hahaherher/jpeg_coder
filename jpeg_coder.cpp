@@ -224,12 +224,24 @@ string DC_table[12] = {
     "1110", "11110", "111110", "1111110", "11111110", "111111110"
 };
 
+map<int, string> diff_table;
+map<string, int> invert_diff_table;
+
 string DC_encode(int diff_DC) {
     string dc_codewords;
-    string coefficient_codeword = intToBinaryString(diff_DC);
+    string diff_codeword;// = intToBinaryString(diff_DC);
+    
+    auto it = diff_table.find(diff_DC);
+    if (it != diff_table.end()) {
+        diff_codeword = diff_table[diff_DC];
+    }
+    else {
+        diff_codeword = intToBinaryString(diff_DC);
+        diff_table[diff_DC] = diff_codeword;
+    }
     int category = (diff_DC == 0) ? 0 : floor(log(abs(diff_DC))) + 1;
 
-    dc_codewords = DC_table[category] + coefficient_codeword;
+    dc_codewords = DC_table[category] + diff_codeword;
 
     return dc_codewords;
 }
@@ -292,6 +304,51 @@ void write_jpg(string filename, string bitstream) {
 }
 
 
+string read_jpg(string filename) {
+    //read binary file
+    ifstream jpgFile(filename, ios::in | ios::binary);
+
+    string bitstream = "";
+    map<unsigned char, vector<bool>> huffmanTable;
+    size_t mapSize;
+
+
+    // 逐字节读取文件内容
+    if (jpgFile.is_open()) {
+        bitset<32> bits;  //62KB
+        size_t lastNonZero;
+        jpgFile.read(reinterpret_cast<char*>(&lastNonZero), sizeof(size_t));
+        while (jpgFile.read(reinterpret_cast<char*>(&bits), sizeof(bits))) {
+            // convert to char
+            for (size_t i = 0; i < 32; ++i) {
+                if (bits.test(i)) {
+                    bitstream += '1';
+                }
+                else {
+                    bitstream += '0';
+                }
+            }
+        }
+        jpgFile.close();
+
+        // 去除末尾的多余零
+        if (lastNonZero != string::npos) {
+            bitstream = bitstream.substr(0, lastNonZero);
+        }
+        else {
+            bitstream.clear(); // 如果全是0，则清空字符串
+        }
+        //cout << "Decoded string: " << compressed_img_str << endl;
+        cout << "Read " << bitstream.length() << " bits." << endl;
+
+        jpgFile.close();
+        return bitstream;
+    }
+    else {
+        cerr << "Unable to open file." << endl;
+    }
+}
+
 
 int main() {
     int choice;
@@ -348,7 +405,7 @@ int main() {
     //cout << original_img[255][256] << endl;
     //cout << original_img[256][256] << endl;
 
-    // scan 512 * 512 with 8 * 8 DCT
+    // encoding, scan 512 * 512 with 8 * 8 DCT
     for (const int QF : {90, 80, 50, 20, 10, 5}) {
         int x_pos = 0, y_pos = 0;
         int last_DC = 0;
@@ -429,7 +486,99 @@ int main() {
         printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
         printf("Space saving: %0.2f%% \n\n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
 
+        // decode
+        string compressed_bitstream = read_jpg(filename);
+        int stream_len = compressed_bitstream.length();
+
+        // build a new table equals to map<code, diff>
+        for (const auto& pair : diff_table) {
+            invert_diff_table[pair.second] = pair.first;
+        }
+        
+        do {
+            int bit_num = 4;
+            string first_bits = compressed_bitstream.substr(0, bit_num);
+            if (first_bits < DC_table[6]) {
+                first_bits = compressed_bitstream.substr(0, --bit_num);
+                if (first_bits[0] == '1') {
+                    if (first_bits < DC_table[4]) {
+                        category = 3;
+                        compressed_bitstream = compressed_bitstream.substr(0, stream_len - bit_num);
+                        string diff_DC_codeword = compressed_bitstream.substr(0, category);
+                        int diff_DC = invert_diff_table[diff_DC_codeword];
+                        compressed_bitstream = compressed_bitstream.substr(0, stream_len - category);
+                    }
+                    else if (first_bits > DC_table[4]) {
+                        category = 5;
+                    }
+                    else {
+                        category = 4;
+                    }
+                }
+            }
+            else if(first_bits> DC_table[6]) {
+                first_bits = compressed_bitstream.substr(0, ++bit_num);
+            }
+            else {
+                category = 6;
+                compressed_bitstream = compressed_bitstream.substr(0, bit_num);
+                
+            }
+        }
+
+        while (y_pos < image_width) {
+            // create empty 8*8 block
+            float** block = create_2D_array(n);
+
+            //float** block = new float* [8];
+            //for (int i = 0; i < 8; ++i) {
+            //    block[i] = new float[8]; // 为每行创建 float 数组
+            //}
+            // scan 8*8 block from 512*512 image
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    block[i][j] = original_img[x_pos + i][y_pos + j];
+                }
+            }
+            // dct processing
+            dct2(block, n);
+            // Quantization
+            quantize(block, QF);
+
+            // DC encode
+            int diff_DC = block[0][0] - last_DC;
+            last_DC = block[0][0];
+            string dc_codewords = DC_encode(diff_DC);
+
+            // AC encode
+            vector<SnakeBody> snake_vec = AC_run_length(block);
+            string ac_codewords = AC_encode(snake_vec);
+            //cout << snake_vec.size()<<endl;
+            /*for (int i = 0; i < snake_vec.size();i++) {
+                cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
+            }*/
+
+            string codewords = dc_codewords + ac_codewords;
+            bitstream += codewords;
+
+            // push 8*8 block to processed image
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    processed_img[x_pos + i][y_pos + j] = block[i][j];
+                }
+            }
+
+            // move to next 8*8 position
+            x_pos += 8;
+            if (x_pos == image_width) {
+                y_pos += 8;
+                x_pos = 0;
+            }
+        }
     }
+
+    
+
 
 	return 0;
 }
