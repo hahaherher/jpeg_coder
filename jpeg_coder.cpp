@@ -35,7 +35,7 @@ float** read_raw_img(string file_name) {
     // 讀取 vector 數據到 float array
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            original_img[i][j] = temp_vec[i*n+j];
+            original_img[i][j] = temp_vec[i * n + j];
         }
     }
 
@@ -47,8 +47,44 @@ float** read_raw_img(string file_name) {
     return original_img;
 }
 
-void quantize(float** x, int QF) {
-    int QUAN_MATRIX[8][8] = {
+
+// 函數用於解析 CSV 檔案中的一行數據並返回一個結構
+map<vector<int>, string> parseCSV(string filename) {
+    // 打開 CSV 檔案
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cout << "無法打開檔案" << endl;
+    }
+
+    // 存儲所有行數據的向量
+    map<vector<int>, string> dataList;
+
+    // 逐行讀取檔案內容
+    string line;
+    while (getline(file, line)) {
+        // 解析每一行並將數據存儲到 dataList 向量中
+        vector<int> ac_indices(2);
+        stringstream ss(line);
+        string token;
+
+        // 逐一讀取每個逗號分隔的欄位
+        // run
+        getline(ss, token, ',');
+        ac_indices.push_back(stoi(token));
+        // category
+        getline(ss, token, ',');
+        ac_indices.push_back(stoi(token));
+        // codeword
+        getline(ss, token, ',');
+        dataList[ac_indices] = token;
+    }
+    file.close();
+
+    return dataList;
+}
+
+
+int QUAN_MATRIX[8][8] = {
         {16, 11, 10, 16, 24, 40, 51, 61},
         {12, 12, 14, 19, 26, 58, 60, 55},
         {14, 13, 16, 24, 40, 57, 69, 56},
@@ -57,7 +93,10 @@ void quantize(float** x, int QF) {
         {24, 35, 55, 64, 81, 104, 113, 92},
         {49, 64, 78, 87, 103, 121, 120, 101},
         {72, 92, 95, 98, 112, 100, 103, 99},
-    };
+};
+
+void quantize(float** x, int QF) {
+    
     float factor;
     if (QF < 50){
         factor = 5000 / QF;
@@ -72,6 +111,7 @@ void quantize(float** x, int QF) {
         }
     }
 }
+
 
 struct SnakeBody {
     int zeros;
@@ -109,51 +149,9 @@ vector<SnakeBody> AC_run_length(float** block) {
         }
 
     }
-    if (block[7][7] == 0){
-        snake_vec.push_back(SnakeBody(-1, EOF));
-    }
+    snake_vec.push_back(SnakeBody(-1, EOF));
+    
     return snake_vec;
-}
-
-
-struct ACData {
-    int run;
-    int category;
-    string codeword;
-};
-
-
-// 函數用於解析 CSV 檔案中的一行數據並返回一個結構
-vector<ACData> parseCSV(string filename) {
-
-    // 打開 CSV 檔案
-    ifstream file(filename);
-    if (!file.is_open()) {
-        cout << "無法打開檔案" << endl;
-    }
-
-    vector<ACData> dataList; // 存儲所有行數據的向量
-
-    // 逐行讀取檔案內容
-    string line;
-    while (getline(file, line)) {
-        // 解析每一行並將數據存儲到 dataList 向量中
-        ACData data;
-        stringstream ss(line);
-        string token;
-
-        // 逐一讀取每個逗號分隔的欄位
-        getline(ss, token, ',');
-        data.run = stoi(token);
-        getline(ss, token, ',');
-        data.category = stoi(token);
-        getline(ss, token, ',');
-        data.codeword = token;
-        dataList.push_back(data);
-    }
-    file.close();
-
-    return dataList;
 }
 
 
@@ -175,6 +173,9 @@ string intToBinaryString(int num) {
     return binaryString;
 }
 
+
+map<vector<int>, string> AC_table = parseCSV("AC_Luminance.csv");
+
 string AC_encode(vector<SnakeBody> snake_vec) {
     //map<int, string> conversionMap;
     //// 建立整數到二進制字符串的映射
@@ -188,17 +189,17 @@ string AC_encode(vector<SnakeBody> snake_vec) {
     //}
 
     string bitstring="";
-    string filename = "AC_Luminance.csv";
-    vector<ACData> AC_table = parseCSV(filename);
+
     for (SnakeBody s : snake_vec) {
         string codeword;
-        int category = floor(log(s.value)) + 1;
+        int category = floor(log(abs(s.value))) + 1;
         if (s.zeros == -1) {
             codeword = "1010";
         }
         else {
             string coefficient_codeword = intToBinaryString(s.value);
-            codeword = AC_table[s.zeros * 10 + category].codeword + coefficient_codeword;
+            vector<int> ac_indices = { s.zeros , category };
+            codeword = AC_table[ac_indices] + coefficient_codeword;
         }
         bitstring += codeword;
     }
@@ -207,8 +208,19 @@ string AC_encode(vector<SnakeBody> snake_vec) {
 }
 
 
+string DC_table[12] = {
+    // DC Luminance table
+    "00", "010", "011", "100", "101", "110",
+    "1110", "11110", "111110", "1111110", "11111110", "111111110"
+};
+
 string DC_encode(int diff_DC) {
     string dc_codewords;
+    string coefficient_codeword = intToBinaryString(diff_DC);
+    int category = (diff_DC == 0) ? 0 : floor(log(abs(diff_DC))) + 1;
+
+    dc_codewords = DC_table[category] + coefficient_codeword;
+
     return dc_codewords;
 }
 
@@ -263,13 +275,14 @@ int main() {
 
     float **original_img = read_raw_img(raw_name);
     int n = 8;
-    cout << original_img[255][256] << endl;
-    cout << original_img[256][256] << endl;
+    //cout << original_img[255][256] << endl;
+    //cout << original_img[256][256] << endl;
 
     // scan 512 * 512 with 8 * 8 DCT
     int x_pos = 0, y_pos = 0;
     const int QF = 50;
     int last_DC = 0;
+    string bitstream = "";
 
     while (y_pos < 512) {
         // create empty 8*8 block
@@ -290,23 +303,28 @@ int main() {
 
         int diff_DC = block[0][0]-last_DC;
         last_DC = block[0][0];
+
+        // DC encode
+        string dc_codewords = DC_encode(diff_DC);
+
+        // AC encode
         vector<SnakeBody> snake_vec = AC_run_length(block);
-        string codewords = AC_encode(snake_vec);
+        string ac_codewords = AC_encode(snake_vec);
         //cout << snake_vec.size()<<endl;
         /*for (int i = 0; i < snake_vec.size();i++) {
             cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
         }*/
 
-        // DC encode
-        string dc_codewords = DC_encode(diff_DC);
+        string codewords = dc_codewords + ac_codewords;
+        bitstream += codewords;
 
-
-        // push 8*8 block back to original image
-        for (int i = 0; i < 8; i++) {
-            for (int j = 0; j < 8; j++) {
-                original_img[x_pos + i][y_pos + j] = block[i][j];
-            }
-        }
+        //// push 8*8 block back to original image
+        //for (int i = 0; i < 8; i++) {
+        //    for (int j = 0; j < 8; j++) {
+        //        original_img[x_pos + i][y_pos + j] = block[i][j];
+        //    }
+        //}
+        
         // move to next 8*8 position
         x_pos += 8;
         if (x_pos == 512) {
@@ -315,8 +333,9 @@ int main() {
         }
     }
     
-    cout << original_img[255][256] << endl;
-    cout << original_img[256][256] << endl;
+    //cout << original_img[255][256] << endl;
+    //cout << original_img[256][256] << endl;
+    cout << bitstream.length() << endl << bitstream << endl;
 
 	return 0;
 }
