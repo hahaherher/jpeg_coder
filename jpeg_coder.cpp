@@ -10,6 +10,15 @@
 
 using namespace std;
 
+float** create_2D_array(int n) {
+    // 二维 float array
+    float** array_2D = new float* [n]; // 创建指向 float 指针的指针
+    for (int i = 0; i < n; ++i) {
+        array_2D[i] = new float[n]; // 为每行创建 float 数组
+    }
+
+    return array_2D;
+}
 
 float** read_raw_img(string file_name) {
     ifstream rawFile(file_name, ios::in | ios::binary);
@@ -26,11 +35,12 @@ float** read_raw_img(string file_name) {
 
     // 二维 float array
     int n = sqrt(int(fileSize));
-    float** original_img = new float* [n]; // 创建指向 float 指针的指针
+    float** original_img = create_2D_array(n);
+    //float** original_img = new float* [n]; // 创建指向 float 指针的指针
 
-    for (int i = 0; i < n; ++i) {
-        original_img[i] = new float[n]; // 为每行创建 float 数组
-    }
+    //for (int i = 0; i < n; ++i) {
+    //    original_img[i] = new float[n]; // 为每行创建 float 数组
+    //}
 
     // 讀取 vector 數據到 float array
     for (int i = 0; i < n; ++i) {
@@ -225,6 +235,64 @@ string DC_encode(int diff_DC) {
 }
 
 
+// calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+double calculatePSNR(float** original_img, float** processed_img, int image_width) {
+    int max = 0;
+    int sum = 0;
+    for (int i = 0; i < image_width; i++) {
+        for (int j = 0; j < image_width; j++) {
+            if (original_img[i][j] > max) max = original_img[i][j];
+            int diff = (original_img[i][j] - processed_img[i][j]);
+            sum += diff * diff;
+        }
+    }
+    double MSE = (double)sum / (image_width * image_width);
+    double PSNR = 10.0f * log10((double)max * max / MSE);
+
+    return PSNR;
+}
+
+
+void write_jpg(string filename, string bitstream) {
+    // write bitstream as bitset type
+    size_t strlen = bitstream.length();
+    //cout << strlen << endl << endl;
+
+    ofstream outputFile(filename, ios::binary);
+    if (outputFile.is_open()) {
+        //write bitstream length
+        outputFile.write(reinterpret_cast<const char*>(&strlen), sizeof(size_t));
+
+        // create a buffer to save bit
+        bitset<32> buffer;
+        size_t bufferIndex = 0; //size_t = unsigned int32 = 32 bits
+
+        // convert to binary
+        for (char c : bitstream) {
+            if (c == '1') {
+                buffer.set(bufferIndex);
+            }
+            ++bufferIndex;
+            if (bufferIndex == 32) { // write to file when buffer is full
+                outputFile.write(reinterpret_cast<const char*>(&buffer), sizeof(buffer));
+                buffer.reset();
+                bufferIndex = 0;
+            }
+        }
+        // write to file if there's still data in buffer
+        if (bufferIndex > 0) {
+            outputFile.write(reinterpret_cast<const char*>(&buffer), sizeof(buffer));
+        }
+        outputFile.close();
+        cout << "Binary data has been written to file.\n" << endl;
+    }
+    else {
+        cerr << "Unable to open file." << endl;
+    }
+}
+
+
+
 int main() {
     int choice;
     string img_name;
@@ -273,69 +341,87 @@ int main() {
     string raw_name = data_path + img_name + process_type + ".raw"; //"./Data/RAW/lena_decode.raw";
     cout << raw_name << " Loading..." << endl;
 
-    float **original_img = read_raw_img(raw_name);
+    float** original_img = read_raw_img(raw_name);
+
     int n = 8;
+    int image_width = 512;
     //cout << original_img[255][256] << endl;
     //cout << original_img[256][256] << endl;
 
     // scan 512 * 512 with 8 * 8 DCT
-    int x_pos = 0, y_pos = 0;
-    const int QF = 50;
-    int last_DC = 0;
-    string bitstream = "";
+    for (const int QF : {90, 80, 50, 20, 10, 5}) {
+        int x_pos = 0, y_pos = 0;
+        int last_DC = 0;
+        string bitstream = "";
+        float** processed_img = create_2D_array(image_width);
 
-    while (y_pos < 512) {
-        // create empty 8*8 block
-        float** block = new float* [8];
-        for (int i = 0; i < 8; ++i) {
-            block[i] = new float[8]; // 为每行创建 float 数组
-        }
-        // scan 8*8 block from 512*512 image
-        for (int i = 0; i < 8; i++) {
-            for (int j = 0; j < 8; j++) {
-                block[i][j] = original_img[x_pos + i][y_pos + j];
+        while (y_pos < image_width) {
+            // create empty 8*8 block
+            float** block = create_2D_array(n);
+
+            //float** block = new float* [8];
+            //for (int i = 0; i < 8; ++i) {
+            //    block[i] = new float[8]; // 为每行创建 float 数组
+            //}
+            // scan 8*8 block from 512*512 image
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    block[i][j] = original_img[x_pos + i][y_pos + j];
+                }
+            }
+            // dct processing
+            dct2(block, n);
+            // Quantization
+            quantize(block, QF);
+
+            // DC encode
+            int diff_DC = block[0][0] - last_DC;
+            last_DC = block[0][0];
+            string dc_codewords = DC_encode(diff_DC);
+
+            // AC encode
+            vector<SnakeBody> snake_vec = AC_run_length(block);
+            string ac_codewords = AC_encode(snake_vec);
+            //cout << snake_vec.size()<<endl;
+            /*for (int i = 0; i < snake_vec.size();i++) {
+                cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
+            }*/
+
+            string codewords = dc_codewords + ac_codewords;
+            bitstream += codewords;
+
+            // push 8*8 block to processed image
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    processed_img[x_pos + i][y_pos + j] = block[i][j];
+                }
+            }
+
+            // move to next 8*8 position
+            x_pos += 8;
+            if (x_pos == image_width) {
+                y_pos += 8;
+                x_pos = 0;
             }
         }
-        // dct processing
-        dct2(block, n);
-        // Quantization
-        quantize(block, QF);
 
-        int diff_DC = block[0][0]-last_DC;
-        last_DC = block[0][0];
-
-        // DC encode
-        string dc_codewords = DC_encode(diff_DC);
-
-        // AC encode
-        vector<SnakeBody> snake_vec = AC_run_length(block);
-        string ac_codewords = AC_encode(snake_vec);
-        //cout << snake_vec.size()<<endl;
-        /*for (int i = 0; i < snake_vec.size();i++) {
-            cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
-        }*/
-
-        string codewords = dc_codewords + ac_codewords;
-        bitstream += codewords;
-
-        //// push 8*8 block back to original image
-        //for (int i = 0; i < 8; i++) {
-        //    for (int j = 0; j < 8; j++) {
-        //        original_img[x_pos + i][y_pos + j] = block[i][j];
-        //    }
-        //}
+        //cout << original_img[255][256] << endl;
+        //cout << original_img[256][256] << endl;
         
-        // move to next 8*8 position
-        x_pos += 8;
-        if (x_pos == 512) {
-            y_pos += 8;
-            x_pos = 0;
-        }
+
+        // save as .hahajpg
+        string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
+        cout << filename << endl;         
+        cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+        write_jpg(filename, bitstream);
+
+        // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+        double PSNR = calculatePSNR(original_img, processed_img, image_width);
+        printf("QF = %d, PSNR = %lf\n\n", QF, PSNR);
+
+        // compare the file size
+
     }
-    
-    //cout << original_img[255][256] << endl;
-    //cout << original_img[256][256] << endl;
-    cout << bitstream.length() << endl << bitstream << endl;
 
 	return 0;
 }
