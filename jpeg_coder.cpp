@@ -368,7 +368,8 @@ string read_jpg(string filename) {
 
 string str_pop(string str, int pop_num) {
     while (pop_num > 0) {
-        str.pop_back();
+        //str.pop_back();
+        str.erase(0, 1);
         pop_num--;
     }
     return str;
@@ -599,15 +600,16 @@ int main() {
             }
             // > 1110
             else {
-                while (DC_bits[bit_num-1] != 0) {
+                while (DC_bits[bit_num-1] != '0') {
                     DC_bits = compressed_bitstream.substr(0, ++bit_num);
                 }
                 category = DC_bits.length() + 2;
             }
-            
+            compressed_bitstream = str_pop(compressed_bitstream, bit_num);
+
             string diff_DC_codeword = compressed_bitstream.substr(0, category);
             int diff_DC = invert_diff_table[diff_DC_codeword];
-            compressed_bitstream = str_pop(compressed_bitstream, category + bit_num);
+            compressed_bitstream = str_pop(compressed_bitstream, category);
 
             
             // AC decode
@@ -615,7 +617,7 @@ int main() {
             string ac_codeword = compressed_bitstream.substr(0, 4);
             while (true)
             {
-                if (ac_codeword == "1010") {
+                if (ac_codeword.compare("1010") == 0) {
                     break;
                 }
                 bit_num = 2;
@@ -624,12 +626,15 @@ int main() {
                 while (invert_AC_table.find(ac_codeword) == invert_AC_table.end()) {
                     ac_codeword = compressed_bitstream.substr(0, ++bit_num);
                 }
+                compressed_bitstream = str_pop(compressed_bitstream, bit_num);
+
                 indices = invert_AC_table[ac_codeword];
                 int run = indices[0];
                 category = indices[1];
                 string diff_codeword = compressed_bitstream.substr(0, category);
+                compressed_bitstream = str_pop(compressed_bitstream, category);
+
                 int diff_AC = invert_diff_table[diff_codeword];
-                compressed_bitstream = compressed_bitstream.substr(0, stream_len - category);
                 ac_snake.push_back(SnakeBody(run, diff_AC));
             }
             
