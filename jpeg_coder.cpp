@@ -218,7 +218,7 @@ string AC_encode(vector<SnakeBody> snake_vec) {
 }
 
 
-string DC_table[12] = {
+vector<string> DC_table = {
     // DC Luminance table
     "00", "010", "011", "100", "101", "110",
     "1110", "11110", "111110", "1111110", "11111110", "111111110"
@@ -349,7 +349,13 @@ string read_jpg(string filename) {
     }
 }
 
-
+string str_pop(string str, int pop_num) {
+    while (pop_num > 0) {
+        str.pop_back();
+        pop_num--;
+    }
+    return str;
+}
 int main() {
     int choice;
     string img_name;
@@ -494,77 +500,88 @@ int main() {
         for (const auto& pair : diff_table) {
             invert_diff_table[pair.second] = pair.first;
         }
-        
-        do {
-            int bit_num = 4;
-            string first_bits = compressed_bitstream.substr(0, bit_num);
-            if (first_bits < DC_table[6]) {
-                first_bits = compressed_bitstream.substr(0, --bit_num);
-                if (first_bits[0] == '1') {
-                    if (first_bits < DC_table[4]) {
-                        category = 3;
-                        compressed_bitstream = compressed_bitstream.substr(0, stream_len - bit_num);
-                        string diff_DC_codeword = compressed_bitstream.substr(0, category);
-                        int diff_DC = invert_diff_table[diff_DC_codeword];
-                        compressed_bitstream = compressed_bitstream.substr(0, stream_len - category);
-                    }
-                    else if (first_bits > DC_table[4]) {
-                        category = 5;
-                    }
-                    else {
-                        category = 4;
-                    }
-                }
-            }
-            else if(first_bits> DC_table[6]) {
-                first_bits = compressed_bitstream.substr(0, ++bit_num);
-            }
-            else {
-                category = 6;
-                compressed_bitstream = compressed_bitstream.substr(0, bit_num);
-                
-            }
+        map<string, vector<int>> invert_AC_table;
+        // build a new table equals to map<code, diff>
+        for (const auto& pair : AC_table) {
+            invert_AC_table[pair.second] = pair.first;
+        }
+        map<string, int> invert_DC_table;
+        // build a new table equals to map<code, diff>
+        for (int i = 0;i < DC_table.size();i++) {
+            invert_DC_table[DC_table[i]] = i;
         }
 
+        float** uncompressed_img = create_2D_array(image_width);
         while (y_pos < image_width) {
+            int bit_num = 4;
+            int category;
             // create empty 8*8 block
             float** block = create_2D_array(n);
 
-            //float** block = new float* [8];
-            //for (int i = 0; i < 8; ++i) {
-            //    block[i] = new float[8]; // 为每行创建 float 数组
-            //}
-            // scan 8*8 block from 512*512 image
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    block[i][j] = original_img[x_pos + i][y_pos + j];
+            // DC decode
+            string DC_bits = compressed_bitstream.substr(0, bit_num);
+            // < 1110
+            if (DC_bits < DC_table[6]) {
+                DC_bits = compressed_bitstream.substr(0, --bit_num);
+
+                if (invert_DC_table.find(DC_bits) != invert_DC_table.end()) {
+                    category = invert_DC_table[DC_bits];
+                }
+                else {
+                    bit_num--;
+                    category = 0;
                 }
             }
-            // dct processing
-            dct2(block, n);
-            // Quantization
-            quantize(block, QF);
+            // > 1110
+            else {
+                while (DC_bits[bit_num-1] != 0) {
+                    DC_bits = compressed_bitstream.substr(0, ++bit_num);
+                }
+                category = DC_bits.length() + 2;
+            }
+            
+            string diff_DC_codeword = compressed_bitstream.substr(0, category);
+            int diff_DC = invert_diff_table[diff_DC_codeword];
+            compressed_bitstream = str_pop(compressed_bitstream, category + bit_num);
 
-            // DC encode
-            int diff_DC = block[0][0] - last_DC;
-            last_DC = block[0][0];
-            string dc_codewords = DC_encode(diff_DC);
+            
+            // AC decode
+            vector<SnakeBody> ac_snake;
+            string ac_codeword = compressed_bitstream.substr(0, 4);
+            while (true)
+            {
+                if (ac_codeword == "1010") {
+                    break;
+                }
+                bit_num = 2;
+                ac_codeword = compressed_bitstream.substr(0, bit_num);
+                vector<int> indices;// = invert_AC_table[ac_codeword];
+                while (invert_AC_table.find(ac_codeword) == invert_AC_table.end()) {
+                    ac_codeword = compressed_bitstream.substr(0, ++bit_num);
+                }
+                indices = invert_AC_table[ac_codeword];
+                int run = indices[0];
+                category = indices[1];
+                string diff_codeword = compressed_bitstream.substr(0, category);
+                int diff_AC = invert_diff_table[diff_codeword];
+                compressed_bitstream = compressed_bitstream.substr(0, stream_len - category);
+                ac_snake.push_back(SnakeBody(run, diff_AC));
+            }
+            
+            // AC_run_length decode
+            int DC = last_DC + diff_DC; 
+            last_DC = DC;
+            block = invert_AC_run_length(DC, ac_snake);
 
-            // AC encode
-            vector<SnakeBody> snake_vec = AC_run_length(block);
-            string ac_codewords = AC_encode(snake_vec);
-            //cout << snake_vec.size()<<endl;
-            /*for (int i = 0; i < snake_vec.size();i++) {
-                cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
-            }*/
+            // invert Quantization
+            invert_quantize(block, QF);
+            // invert dct processing
+            idct2(block, n);
 
-            string codewords = dc_codewords + ac_codewords;
-            bitstream += codewords;
-
-            // push 8*8 block to processed image
+            // push 8*8 block to uncompressed image
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
-                    processed_img[x_pos + i][y_pos + j] = block[i][j];
+                    uncompressed_img[x_pos + i][y_pos + j] = block[i][j];
                 }
             }
 
@@ -575,6 +592,8 @@ int main() {
                 x_pos = 0;
             }
         }
+        // write uncompressed_img to .raw
+
     }
 
     
