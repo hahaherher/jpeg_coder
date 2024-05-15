@@ -641,6 +641,7 @@ int main() {
             // AC_run_length decode
             int DC = last_DC + diff_DC; 
             last_DC = DC;
+            // debug here!!
             block = invert_AC_run_length(DC, ac_snake);
 
             // invert Quantization
