@@ -123,6 +123,23 @@ void quantize(float** x, int QF) {
 }
 
 
+void invert_quantize(float** x, int QF) {
+    float factor;
+    if (QF < 50) {
+        factor = 5000 / QF;
+    }
+    else {
+        factor = 200 - 2 * QF;
+    }
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            float qij = QUAN_MATRIX[i][j] * factor / 100;
+            x[i][j] *=  qij;
+        }
+    }
+}
+
+
 struct SnakeBody {
     int zeros;
     float value;
@@ -356,6 +373,50 @@ string str_pop(string str, int pop_num) {
     }
     return str;
 }
+
+float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
+    int n = 8;
+    float** block = create_2D_array(n);
+
+    int sign = -1;
+    int i = 1, j = 0;
+    int time_increse = 1;
+    int snake_id = 0;
+    int zeros = ac_snake[snake_id].zeros;
+
+    block[0][0] = DC;
+    for (int times = 1; times <= 7 && times >= 0; times += time_increse, sign *= -1) {
+        for (int time_count = times; time_count >= 0; time_count--, i += sign, j -= sign) {            
+            if (zeros > 0) {
+                zeros--;
+                block[i][j] = 0;
+            }
+            else if(zeros == 0){
+                int value = ac_snake[snake_id].value;
+                block[i][j] = value;
+                snake_id++;
+                zeros = ac_snake[snake_id].zeros;
+            }
+        }
+        i -= sign;
+        j += sign;
+
+        if (times == 7) {
+            time_increse = -1;
+        }
+        if (sign == 1 && time_increse == 1 || sign == -1 && time_increse == -1) {
+            i += 1;
+        }
+        else if (sign == -1 && time_increse == 1 || sign == 1 && time_increse == -1) {
+            j += 1;
+        }
+
+    }
+
+    return block;
+}
+
+
 int main() {
     int choice;
     string img_name;
@@ -512,6 +573,10 @@ int main() {
         }
 
         float** uncompressed_img = create_2D_array(image_width);
+
+        x_pos = 0, y_pos = 0;
+        last_DC = 0;
+
         while (y_pos < image_width) {
             int bit_num = 4;
             int category;
