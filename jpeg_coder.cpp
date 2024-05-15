@@ -284,7 +284,7 @@ void write_jpg(string filename, string bitstream) {
             outputFile.write(reinterpret_cast<const char*>(&buffer), sizeof(buffer));
         }
         outputFile.close();
-        cout << "Binary data has been written to file.\n" << endl;
+        //cout << "Binary data has been written to file.\n" << endl;
     }
     else {
         cerr << "Unable to open file." << endl;
@@ -412,14 +412,22 @@ int main() {
         // save as .hahajpg
         string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
         cout << filename << endl;         
-        cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+        //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
         write_jpg(filename, bitstream);
 
         // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
         double PSNR = calculatePSNR(original_img, processed_img, image_width);
-        printf("QF = %d, PSNR = %lf\n\n", QF, PSNR);
+        printf("QF = %d, PSNR = %lf\n", QF, PSNR);
 
         // compare the file size
+        size_t uncompressed_file_size = image_width * image_width; // 65536
+        size_t compressed_file_size = bitstream.length() / 8; // 499680 / 8 = 62460
+
+        int uncompressed_file_kb = roundf(float(uncompressed_file_size) / 1024); //64KB
+        int compressed_file_kb = roundf(float(compressed_file_size) / 1024); //60KB
+        printf("original file size: %zd Bytes (= %d KB). \n", uncompressed_file_size, uncompressed_file_kb);
+        printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
+        printf("Space saving: %0.2f%% \n\n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
 
     }
 
