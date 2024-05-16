@@ -137,6 +137,12 @@ void invert_quantize(float** x, int QF) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
             //x[i][j] += 128;
+            /*if (x[i][j] > 255) {
+                x[i][j] = 255;
+            }
+            else if (x[i][j] < -256) {
+                x[i][j] = -256;
+            }*/
         }
     }
 }
@@ -449,7 +455,11 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
     for (int i = 0; i < image_width; ++i) {
         for (int j = 0; j < image_width; ++j) {
-            char pixel = int(gray_img[i][j]);
+            if (gray_img[i][j] > 255) {
+                gray_img[i][j] = 255;
+            }
+
+            char pixel = round(gray_img[i][j]);
             putc(pixel, output->file);
         }
     }
@@ -458,6 +468,24 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
 
 int main() {
+    //int temp_block[8][8] = {
+    //{236, -1, -12, -5, 2, -2, -3, 1},
+    //{-23, -17, -6, -3, -3, 0, 0, -1},
+    //{-11, -9, -2, 2, 0, -1, -1, 0},
+    //{-7, -2, 0, 1, 1, 0, 0, 0},
+    //{-1, -1, 1, 2, 0, -1, 1, 1},
+    //{2, 0, 2, 0, -1, 1, 1, -1},
+    //{-1, 0, 0, -1, 0, 2, 1, -1},
+    //{-3, 2, -4, -2, 2, 1, -1, 0},
+    //};
+    //float** block = create_2D_array(8);
+    //for (int i = 0; i < 8; i++) {
+    //    for (int j = 0; j < 8; j++) {
+    //        block[i][j] = temp_block[i][j];
+    //    }
+    //}    
+    //quantize(block, 50);
+    //invert_quantize(block, 50);
     //float** block = create_2D_array(8);
     //for (int i = 0; i < 8; i++) {
     //    for (int j = 0; j < 8; j++) {
@@ -479,6 +507,8 @@ int main() {
     //block[1][0] = -3;
     //block[1][3] = -1;
     //block[2][0] = 1;
+
+
 
     /*vector<SnakeBody> snake_vec = AC_run_length(block);
     string ac_codewords = AC_encode(snake_vec);
