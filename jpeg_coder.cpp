@@ -228,6 +228,7 @@ string AC_encode(vector<SnakeBody> snake_vec) {
         else {
             string coefficient_codeword = intToBinaryString(s.value);
             vector<int> ac_indices = { s.zeros , category };
+            string temp_str = AC_table[ac_indices];
             codeword = AC_table[ac_indices] + coefficient_codeword;
         }
         bitstring += codeword;
@@ -370,11 +371,12 @@ string read_jpg(string filename) {
 }
 
 string str_pop(string str, int pop_num) {
-    while (pop_num > 0) {
-        //str.pop_back();
-        str.erase(0, 1);
-        pop_num--;
-    }
+    str.erase(0, pop_num);
+    //while (pop_num > 0) {
+    //    //str.pop_back();
+    //    
+    //    pop_num--;
+    //}
     return str;
 }
 
@@ -401,7 +403,7 @@ float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
                 zeros--;
                 block[i][j] = 0;
             }
-            else if (zeros == 0) {
+            else {
                 int value;
                 if (ac_snake.size() == 0) value = 0; 
                 else value = ac_snake[snake_id].value;
@@ -456,20 +458,32 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
 
 int main() {
-    /*float** block = create_2D_array(8);
-    for (int i = 0; i < 8; i++) {
-        for (int j = 0; j < 8; j++) {
-            block[i][j] = 0;
-        }
-    }    
-    block[0][0] = 15;
-    block[0][1] = -2;
-    block[0][2] = -1;
-    block[1][1] = -1;
-    block[2][0] = 1;
-    block[1][2] = -1;
+    //float** block = create_2D_array(8);
+    //for (int i = 0; i < 8; i++) {
+    //    for (int j = 0; j < 8; j++) {
+    //        block[i][j] = 0;
+    //    }
+    //}    
+    //// example 1
+    //block[0][0] = 15;
+    //block[0][1] = -2;
+    //block[0][2] = -1;
+    //block[1][1] = -1;
+    //block[2][0] = -1;
+    //block[1][2] = -1;
+    //// example 2
+    //block[0][0] = 5;
+    //block[0][1] = 2;
+    //block[0][2] = 1;
+    //block[1][1] = -1;
+    //block[1][0] = -3;
+    //block[1][3] = -1;
+    //block[2][0] = 1;
 
-    vector<SnakeBody> snake_vec = AC_run_length(block);*/
+    /*vector<SnakeBody> snake_vec = AC_run_length(block);
+    string ac_codewords = AC_encode(snake_vec);
+    string dc_codewords = DC_encode(block[0][0]);
+    string codewords = dc_codewords + ac_codewords;*/
 
     int choice;
     string img_name;
@@ -589,7 +603,7 @@ int main() {
         // save as .hahajpg
         string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
         cout << filename << endl;
-        //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+        cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
         write_jpg(filename, bitstream);
 
         // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
@@ -610,7 +624,7 @@ int main() {
         string compressed_bitstream = read_jpg(filename);
         int stream_len = compressed_bitstream.length();
 
-        //cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
+        cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
 
         // build a new table equals to map<code, diff>
         for (const auto& pair : diff_table) {
@@ -630,6 +644,8 @@ int main() {
         float** uncompressed_img = create_2D_array(image_width);
 
         x_pos = 0, y_pos = 0;
+        //x_pos = 296, y_pos = 496;
+        //compressed_bitstream = str_pop(compressed_bitstream, 448000);
         last_DC = 0;
 
         while (y_pos < image_width) {
@@ -670,22 +686,23 @@ int main() {
 
             // AC decode
             vector<SnakeBody> ac_snake;
-            string ac_codeword = compressed_bitstream.substr(0, 4);
-            while (true)
+            while (compressed_bitstream.length()>0)
             {
+                string ac_codeword = compressed_bitstream.substr(0, 4);
+
                 if (ac_codeword.compare("1010") == 0) {
                     compressed_bitstream = str_pop(compressed_bitstream, 4);
+                    ac_snake.push_back(SnakeBody(-1, 0));
                     break;
                 }
                 bit_num = 2;
                 ac_codeword = compressed_bitstream.substr(0, bit_num);
-                vector<int> indices;// = invert_AC_table[ac_codeword];
                 while (invert_AC_table.find(ac_codeword) == invert_AC_table.end()) {
                     ac_codeword = compressed_bitstream.substr(0, ++bit_num);
                 }
                 compressed_bitstream = str_pop(compressed_bitstream, bit_num);
 
-                indices = invert_AC_table[ac_codeword];
+                vector<int> indices = invert_AC_table[ac_codeword];
                 int run = indices[0];
                 category = indices[1];
                 string diff_codeword = compressed_bitstream.substr(0, category);
@@ -715,13 +732,14 @@ int main() {
             if (x_pos == image_width) {
                 y_pos += n;
                 x_pos = 0;
+                cout << y_pos << " ";
             }
         }
         // write uncompressed_img to .raw
         string decode_raw_name = img_name + process_type + "_QF" + to_string(QF) + "_decoded.raw";
         write_gray_img(uncompressed_img, decode_raw_name, image_width);
 
-        cout << "output path: " << decode_raw_name << endl << endl;
+        cout << endl<<"output path: " << decode_raw_name << endl << endl;
 
     }
 
