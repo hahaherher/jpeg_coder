@@ -73,7 +73,7 @@ map<vector<int>, string> parseCSV(string filename) {
     string line;
     while (getline(file, line)) {
         // 解析每一行並將數據存儲到 dataList 向量中
-        vector<int> ac_indices(2);
+        vector<int> ac_indices;
         stringstream ss(line);
         string token;
 
@@ -106,9 +106,9 @@ int QUAN_MATRIX[8][8] = {
 };
 
 void quantize(float** x, int QF) {
-    
+
     float factor;
-    if (QF < 50){
+    if (QF < 50) {
         factor = 5000 / QF;
     }
     else {
@@ -134,7 +134,7 @@ void invert_quantize(float** x, int QF) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
-            x[i][j] *=  qij;
+            x[i][j] *= qij;
         }
     }
 }
@@ -152,8 +152,8 @@ vector<SnakeBody> AC_run_length(float** block) {
     int i = 1, j = 0;
     int time_increse = 1;
     int zeros = 0;
-    for (int times = 1; times <= 7 && times >=0 ; times+=time_increse, sign *= -1) {
-        for (int time_count = times; time_count >= 0 ;time_count--, i += sign, j -= sign) {
+    for (int times = 1; times <= 7 && times >= 0; times += time_increse, sign *= -1) {
+        for (int time_count = times; time_count >= 0; time_count--, i += sign, j -= sign) {
             if (block[i][j] == 0) {
                 zeros++;
             }
@@ -164,20 +164,20 @@ vector<SnakeBody> AC_run_length(float** block) {
         }
         i -= sign;
         j += sign;
-        
-        if (times == 7){
+
+        if (times == 7) {
             time_increse = -1;
         }
         if (sign == 1 && time_increse == 1 || sign == -1 && time_increse == -1) {
             i += 1;
         }
-        else if(sign == -1 && time_increse == 1 || sign == 1 && time_increse == -1) {
+        else if (sign == -1 && time_increse == 1 || sign == 1 && time_increse == -1) {
             j += 1;
         }
 
     }
     snake_vec.push_back(SnakeBody(-1, EOF));
-    
+
     return snake_vec;
 }
 
@@ -215,7 +215,7 @@ string AC_encode(vector<SnakeBody> snake_vec) {
     //    cout << pair.first << " -> " << pair.second << endl;
     //}
 
-    string bitstring="";
+    string bitstring = "";
 
     for (SnakeBody s : snake_vec) {
         string codeword;
@@ -247,7 +247,7 @@ map<string, int> invert_diff_table;
 string DC_encode(int diff_DC) {
     string dc_codewords;
     string diff_codeword;// = intToBinaryString(diff_DC);
-    
+
     auto it = diff_table.find(diff_DC);
     if (it != diff_table.end()) {
         diff_codeword = diff_table[diff_DC];
@@ -383,20 +383,33 @@ float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
     int i = 1, j = 0;
     int time_increse = 1;
     int snake_id = 0;
-    int zeros = ac_snake[snake_id].zeros;
+    int zeros;
+    if (ac_snake.size() == 0) {
+        zeros = n * n - 1;
+    }
+    else {
+        zeros = ac_snake[snake_id].zeros;
+    } 
 
     block[0][0] = DC;
     for (int times = 1; times <= 7 && times >= 0; times += time_increse, sign *= -1) {
-        for (int time_count = times; time_count >= 0; time_count--, i += sign, j -= sign) {            
+        for (int time_count = times; time_count >= 0; time_count--, i += sign, j -= sign) {
             if (zeros > 0) {
                 zeros--;
                 block[i][j] = 0;
             }
-            else if(zeros == 0){
-                int value = ac_snake[snake_id].value;
+            else if (zeros == 0) {
+                int value;
+                if (ac_snake.size() == 0) value = 0; 
+                else value = ac_snake[snake_id].value;
                 block[i][j] = value;
-                snake_id++;
-                zeros = ac_snake[snake_id].zeros;
+                
+                // not EOF, snake_id++
+                if (value != 0) {
+                    snake_id++;
+                    zeros = ac_snake[snake_id].zeros;
+                }
+                // EOF, value = 0 -> push 0 until the end
             }
         }
         i -= sign;
@@ -532,11 +545,11 @@ int main() {
 
         //cout << original_img[255][256] << endl;
         //cout << original_img[256][256] << endl;
-        
+
 
         // save as .hahajpg
         string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
-        cout << filename << endl;         
+        cout << filename << endl;
         //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
         write_jpg(filename, bitstream);
 
@@ -569,7 +582,7 @@ int main() {
         }
         map<string, int> invert_DC_table;
         // build a new table equals to map<code, diff>
-        for (int i = 0;i < DC_table.size();i++) {
+        for (int i = 0; i < DC_table.size(); i++) {
             invert_DC_table[DC_table[i]] = i;
         }
 
@@ -600,7 +613,7 @@ int main() {
             }
             // > 1110
             else {
-                while (DC_bits[bit_num-1] != '0') {
+                while (DC_bits[bit_num - 1] != '0') {
                     DC_bits = compressed_bitstream.substr(0, ++bit_num);
                 }
                 category = DC_bits.length() + 2;
@@ -611,13 +624,14 @@ int main() {
             int diff_DC = invert_diff_table[diff_DC_codeword];
             compressed_bitstream = str_pop(compressed_bitstream, category);
 
-            
+
             // AC decode
             vector<SnakeBody> ac_snake;
             string ac_codeword = compressed_bitstream.substr(0, 4);
             while (true)
             {
                 if (ac_codeword.compare("1010") == 0) {
+                    compressed_bitstream = str_pop(compressed_bitstream, 4);
                     break;
                 }
                 bit_num = 2;
@@ -637,9 +651,9 @@ int main() {
                 int diff_AC = invert_diff_table[diff_codeword];
                 ac_snake.push_back(SnakeBody(run, diff_AC));
             }
-            
+
             // AC_run_length decode
-            int DC = last_DC + diff_DC; 
+            int DC = last_DC + diff_DC;
             last_DC = DC;
             // debug here!!
             block = invert_AC_run_length(DC, ac_snake);
@@ -667,8 +681,8 @@ int main() {
 
     }
 
-    
 
 
-	return 0;
+
+    return 0;
 }
