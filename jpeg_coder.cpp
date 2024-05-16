@@ -7,6 +7,7 @@
 #include <bitset>
 
 #include "dct2.h"
+#include "bitio.h"
 
 using namespace std;
 
@@ -135,6 +136,7 @@ void invert_quantize(float** x, int QF) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
+            //x[i][j] += 128;
         }
     }
 }
@@ -431,6 +433,27 @@ float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
 }
 
 
+char* str2chararr(string str_name) {
+    char* char_name = new char[str_name.length() + 1];
+    errno_t errcode2 = strcpy_s(char_name, str_name.length() + 1, str_name.c_str());
+    return char_name;
+}
+
+
+void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
+
+    BIT_FILE* output = OpenOutputBitFile(str2chararr(decode_raw_name));
+
+    for (int i = 0; i < image_width; ++i) {
+        for (int j = 0; j < image_width; ++j) {
+            char pixel = int(gray_img[i][j]);
+            putc(pixel, output->file);
+        }
+    }
+    CloseOutputBitFile(output);
+}
+
+
 int main() {
     int choice;
     string img_name;
@@ -664,21 +687,24 @@ int main() {
             idct2(block, n);
 
             // push 8*8 block to uncompressed image
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
                     uncompressed_img[x_pos + i][y_pos + j] = block[i][j];
                 }
             }
 
             // move to next 8*8 position
-            x_pos += 8;
+            x_pos += n;
             if (x_pos == image_width) {
-                y_pos += 8;
+                y_pos += n;
                 x_pos = 0;
             }
         }
         // write uncompressed_img to .raw
-        cout << "decoded " << filename << endl << endl;
+        string decode_raw_name = img_name + process_type + "_QF" + to_string(QF) + "_decoded.raw";
+        write_gray_img(uncompressed_img, decode_raw_name, image_width);
+
+        cout << "output path: " << decode_raw_name << endl << endl;
 
     }
 
