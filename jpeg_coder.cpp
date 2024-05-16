@@ -356,7 +356,7 @@ string read_jpg(string filename) {
             bitstream.clear(); // 如果全是0，则清空字符串
         }
         //cout << "Decoded string: " << compressed_img_str << endl;
-        cout << "Read " << bitstream.length() << " bits." << endl;
+        //cout << "Read " << bitstream.length() << " bits." << endl;
 
         jpgFile.close();
         return bitstream;
@@ -565,7 +565,7 @@ int main() {
         int compressed_file_kb = roundf(float(compressed_file_size) / 1024); //60KB
         printf("original file size: %zd Bytes (= %d KB). \n", uncompressed_file_size, uncompressed_file_kb);
         printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
-        printf("Space saving: %0.2f%% \n\n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
+        printf("Space saving: %0.2f%% \n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
 
         // decode
         string compressed_bitstream = read_jpg(filename);
@@ -678,6 +678,7 @@ int main() {
             }
         }
         // write uncompressed_img to .raw
+        cout << "decoded " << filename << endl << endl;
 
     }
 
