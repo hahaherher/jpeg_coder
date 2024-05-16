@@ -208,7 +208,7 @@ map<vector<int>, string> AC_table = parseCSV("AC_Luminance.csv");
 string AC_encode(vector<SnakeBody> snake_vec) {
     //map<int, string> conversionMap;
     //// 建立整數到二進制字符串的映射
-    //for (int i = -15; i <= 15; ++i) {
+    //for (int i = -60; i <= 60; ++i) {
     //    conversionMap[i] = intToBinaryString(i);
     //}
 
@@ -221,7 +221,7 @@ string AC_encode(vector<SnakeBody> snake_vec) {
 
     for (SnakeBody s : snake_vec) {
         string codeword;
-        int category = floor(log(abs(s.value))) + 1;
+        int category = floor(log2(abs(s.value))) + 1;
         if (s.zeros == -1) {
             codeword = "1010";
         }
@@ -258,7 +258,8 @@ string DC_encode(int diff_DC) {
         diff_codeword = intToBinaryString(diff_DC);
         diff_table[diff_DC] = diff_codeword;
     }
-    int category = (diff_DC == 0) ? 0 : floor(log(abs(diff_DC))) + 1;
+    
+    int category = (diff_DC == 0) ? 0 : floor(log2(abs(diff_DC))) + 1;
 
     dc_codewords = DC_table[category] + diff_codeword;
 
@@ -455,6 +456,21 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
 
 int main() {
+    /*float** block = create_2D_array(8);
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            block[i][j] = 0;
+        }
+    }    
+    block[0][0] = 15;
+    block[0][1] = -2;
+    block[0][2] = -1;
+    block[1][1] = -1;
+    block[2][0] = 1;
+    block[1][2] = -1;
+
+    vector<SnakeBody> snake_vec = AC_run_length(block);*/
+
     int choice;
     string img_name;
     string process_type;
@@ -527,7 +543,7 @@ int main() {
             // scan 8*8 block from 512*512 image
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
-                    block[i][j] = original_img[x_pos + i][y_pos + j];
+                    block[i][j] = original_img[x_pos + i][y_pos + j]-128;
                 }
             }
             // dct processing
@@ -594,6 +610,8 @@ int main() {
         string compressed_bitstream = read_jpg(filename);
         int stream_len = compressed_bitstream.length();
 
+        //cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
+
         // build a new table equals to map<code, diff>
         for (const auto& pair : diff_table) {
             invert_diff_table[pair.second] = pair.first;
@@ -646,7 +664,9 @@ int main() {
             string diff_DC_codeword = compressed_bitstream.substr(0, category);
             int diff_DC = invert_diff_table[diff_DC_codeword];
             compressed_bitstream = str_pop(compressed_bitstream, category);
-
+            
+            int DC = last_DC + diff_DC;
+            last_DC = DC;
 
             // AC decode
             vector<SnakeBody> ac_snake;
@@ -676,9 +696,6 @@ int main() {
             }
 
             // AC_run_length decode
-            int DC = last_DC + diff_DC;
-            last_DC = DC;
-            // debug here!!
             block = invert_AC_run_length(DC, ac_snake);
 
             // invert Quantization
@@ -689,7 +706,7 @@ int main() {
             // push 8*8 block to uncompressed image
             for (int i = 0; i < n; i++) {
                 for (int j = 0; j < n; j++) {
-                    uncompressed_img[x_pos + i][y_pos + j] = block[i][j];
+                    uncompressed_img[x_pos + i][y_pos + j] = block[i][j]+128;
                 }
             }
 
