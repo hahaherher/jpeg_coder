@@ -118,7 +118,8 @@ void quantize(float** x, int QF) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
-            x[i][j] = round(round(x[i][j]) / qij);
+            x[i][j] = round(x[i][j] / qij);
+            //x[i][j] = round(x[i][j]);
         }
     }
 }
@@ -136,7 +137,7 @@ void invert_quantize(float** x, int QF) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
-            //x[i][j] = round(x[i][j]);
+            x[i][j] = round(x[i][j]);
         }
     }
 }
@@ -164,8 +165,13 @@ vector<SnakeBody> AC_run_length(float** block) {
             }
             else {
                 if (zeros > 15) {
-                    snake_vec.push_back(SnakeBody(15, 0));
-                    snake_vec.push_back(SnakeBody(zeros-15, block[i][j]));
+                    for (int fifth_id = 0; fifth_id < floor(zeros / 15); fifth_id++) {
+                        snake_vec.push_back(SnakeBody(15, 0));
+                        zeros -= 15;
+                        if (zeros <= 15) {
+                            snake_vec.push_back(SnakeBody(zeros, block[i][j]));
+                        }
+                    }
                 }
                 else {
                     snake_vec.push_back(SnakeBody(zeros, block[i][j]));
@@ -187,6 +193,15 @@ vector<SnakeBody> AC_run_length(float** block) {
         }
 
     }
+    /*while (snake_vec.size() > 0 ) {
+        if (snake_vec[snake_vec.size() - 1].value == 0 && snake_vec[snake_vec.size() - 1].zeros == 15) {
+            snake_vec.pop_back();
+        }
+        else {
+            break;
+        }
+    }*/
+    
     snake_vec.push_back(SnakeBody(-1, 0));
 
     return snake_vec;
@@ -554,7 +569,8 @@ float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
                 if ((value == 0 && zeros == 0)){
                     snake_id++;
                     zeros = ac_snake[snake_id].zeros;
-                    value = ac_snake[snake_id].value;
+                    zeros -= 1;
+                    //value = ac_snake[snake_id].value;
                 }
                 block[i][j] = value;
                 
