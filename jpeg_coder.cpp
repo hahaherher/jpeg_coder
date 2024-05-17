@@ -137,13 +137,6 @@ void invert_quantize(float** x, int QF) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
             //x[i][j] = round(x[i][j]);
-            //x[i][j] += 128;
-            /*if (x[i][j] > 255) {
-                x[i][j] = 255;
-            }
-            else if (x[i][j] < -256) {
-                x[i][j] = -256;
-            }*/
         }
     }
 }
@@ -613,28 +606,24 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
     else {
         cerr << "Unable to open file." << endl;
     }
-    //BIT_FILE* output = OpenOutputBitFile(str2chararr(decode_raw_name));
-
-    //for (int i = 0; i < image_width; ++i) {
-    //    for (int j = 0; j < image_width; ++j) {
-    //        //if (gray_img[i][j] > 255) {
-    //        //    gray_img[i][j] = 255;
-    //        //}
-    //        cout << gray_img[i][j] << endl;
-    //        cout << char(gray_img[i][j]) << endl;
-    //        char pixel = gray_img[i][j];
-    //        putc(pixel, output->file);
-    //    }
-    //}
-    //CloseOutputBitFile(output);
 }
 
 
 int main() {
-    /*float** gray_img = read_raw_img("./Test Images/GrayImages/Lena.raw");
-    write_gray_img(gray_img, "Lena_test.raw", 512);
-    cout << "Lena_test.raw" << endl;
+    //float** gray_img = read_raw_img("./Test Images/GrayImages/Lena.raw");
+    //write_gray_img(gray_img, "Lena_test.raw", 512);
+    //cout << "Lena_test.raw" << endl;
     int temp_block[8][8] = {
+    {226, 0, 254, 0, 0, 0, 0, 0},
+    {255, 255, 0, 0, 0, 0, 0, 0},
+    {255, 0, 0, 0, 0, 0, 0, 0},
+    {1, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 1, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0}};
+
+    /*int temp_block[8][8] = {
     {236, -1, -12, -5, 2, -2, -3, 1},
     {-23, -17, -6, -3, -3, 0, 0, -1},
     {-11, -9, -2, 2, 0, -1, -1, 0},
@@ -644,12 +633,22 @@ int main() {
     {-1, 0, 0, -1, 0, 2, 1, -1},
     {-3, 2, -4, -2, 2, 1, -1, 0},
     };
+
+    105 200 254 253 1 1 0 0
+        30 241 249 1 0 1 0 0
+        6 2 0 255 0 0 0 0
+        4 254 1 0 0 255 0 0
+        1 1 0 0 0 0 0 0
+        1 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0
+*/
     float** block = create_2D_array(8);
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             block[i][j] = temp_block[i][j];
         }
-    }*/
+    }
     //quantize(block, 50);
     //invert_quantize(block, 50);
     //float** block = create_2D_array(8);
@@ -683,9 +682,9 @@ int main() {
             block[i][j] = 0;
         }
     }    
-    block[1][4] = -1;
+    block[1][4] = -1;*/
     vector<SnakeBody> snake_vec = AC_run_length(block);
-    string ac_codewords = AC_encode(snake_vec);*/
+    string ac_codewords = AC_encode(snake_vec);
 
     //int last_DC = 34;
     //get_invert_tables();
@@ -784,15 +783,13 @@ int main() {
     int n = 8;
     int image_width = 512;
     get_invert_tables();
-    //cout << original_img[255][256] << endl;
-    //cout << original_img[256][256] << endl;
 
     // encoding, scan 512 * 512 with 8 * 8 DCT
     for (const int QF : {5, 10, 20, 50, 80, 90}) {
         vector<vector<SnakeBody>> all_snakes_encode;
         vector<vector<SnakeBody>> all_snakes_decode;
-        vector<vector<unsigned char>> all_blocks_encode;
-        vector<vector<unsigned char>> all_blocks_decode;
+        vector<vector<char>> all_blocks_encode;
+        vector<vector<char>> all_blocks_decode;
 
         int x_pos = 0, y_pos = 0;
         int last_DC = 0;
@@ -825,7 +822,7 @@ int main() {
             string dc_codewords = DC_encode(diff_DC);
 
             // save block for debugging
-            vector <unsigned char> temp_block(64);
+            vector <char> temp_block(64);
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
                     temp_block[i * 8 + j] = block[i][j];
@@ -859,10 +856,6 @@ int main() {
                 x_pos = 0;
             }
         }
-
-        //cout << original_img[255][256] << endl;
-        //cout << original_img[256][256] << endl;
-
 
         // save as .hahajpg
         string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
@@ -916,7 +909,7 @@ int main() {
             block = invert_AC_run_length(DC, ac_snake);
 
             // save block for debugging
-            vector <unsigned char> temp_block(64);
+            vector <char> temp_block(64);
             for (int i = 0; i < 8; i++) {
                 for (int j = 0; j < 8; j++) {
                     temp_block[i * 8 + j] = block[i][j];
