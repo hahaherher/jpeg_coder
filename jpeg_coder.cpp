@@ -118,7 +118,7 @@ void quantize(float** x, int QF) {
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
-            x[i][j] = round(x[i][j] / qij);
+            x[i][j] = round(round(x[i][j]) / qij);
         }
     }
 }
@@ -136,6 +136,7 @@ void invert_quantize(float** x, int QF) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
+            x[i][j] = round(x[i][j]);
             //x[i][j] += 128;
             /*if (x[i][j] > 255) {
                 x[i][j] = 255;
@@ -208,6 +209,32 @@ string intToBinaryString(int num) {
     return binaryString;
 }
 
+// 將二進制字符串轉換回整數
+int binaryStringToInt(string binaryString) {
+    int num = 0;
+    if (binaryString[0] == '0') {
+        string positiveBinary;
+        for (int i = 0; i < binaryString.size(); ++i) {
+            positiveBinary += (binaryString[i] == '0') ? '1' : '0';
+        }
+        for (int i = 0; i < positiveBinary.size(); ++i) {
+            if (positiveBinary[i] == '1') {
+                num += 1 << (positiveBinary.size() - 1 - i);
+            }
+        }
+        num *= -1;
+    }
+    else {
+        // 正數的處理
+        for (int i = 0; i < binaryString.size(); ++i) {
+            if (binaryString[i] == '1') {
+                num += 1 << (binaryString.size() - 1 - i);
+            }
+        }
+    }
+
+    return num;
+}
 
 map<vector<int>, string> AC_table = parseCSV("AC_Luminance.csv");
 
@@ -252,10 +279,22 @@ vector<string> DC_table = {
 
 map<int, string> diff_table;
 map<string, int> invert_diff_table;
+map<string, vector<int>> invert_AC_table;
+map<string, int> invert_DC_table;
 
-string DC_encode(int diff_DC) {
-    string dc_codewords;
-    string diff_codeword;// = intToBinaryString(diff_DC);
+void get_invert_tables() {
+    // build a new table equals to map<code, diff>
+    for (const auto& pair : AC_table) {
+        invert_AC_table[pair.second] = pair.first;
+    }
+    // build a new table equals to map<code, diff>
+    for (int i = 0; i < DC_table.size(); i++) {
+        invert_DC_table[DC_table[i]] = i;
+    }
+}
+
+string diff_search(int diff_DC) {
+    string diff_codeword;
 
     auto it = diff_table.find(diff_DC);
     if (it != diff_table.end()) {
@@ -264,8 +303,32 @@ string DC_encode(int diff_DC) {
     else {
         diff_codeword = intToBinaryString(diff_DC);
         diff_table[diff_DC] = diff_codeword;
+        invert_diff_table[diff_codeword] = diff_DC;
     }
-    
+    return diff_codeword;
+}
+
+int diff_search(string diff_codeword) {
+    int diff_DC;
+    auto it = invert_diff_table.find(diff_codeword);
+    if (it != invert_diff_table.end()) {
+        diff_DC = invert_diff_table[diff_codeword];
+
+    }
+    else {
+        diff_DC = binaryStringToInt(diff_codeword);
+        invert_diff_table[diff_codeword] = diff_DC;
+        diff_table[diff_DC] = diff_codeword;
+    }
+    return diff_DC;
+}
+
+
+string DC_encode(int diff_DC) {
+    string dc_codewords;
+    string diff_codeword;// = intToBinaryString(diff_DC);
+
+    diff_codeword = diff_search(diff_DC);
     int category = (diff_DC == 0) ? 0 : floor(log2(abs(diff_DC))) + 1;
 
     dc_codewords = DC_table[category] + diff_codeword;
@@ -386,6 +449,75 @@ string str_pop(string str, int pop_num) {
     return str;
 }
 
+string compressed_bitstream;
+
+int dc_decode(int last_DC) {
+    // DC decode
+    int bit_num = 4;
+    int category;
+    string DC_bits = compressed_bitstream.substr(0, bit_num);
+    // < 1110
+    if (DC_bits < DC_table[6]) {
+        DC_bits = compressed_bitstream.substr(0, --bit_num);
+
+        if (invert_DC_table.find(DC_bits) != invert_DC_table.end()) {
+            category = invert_DC_table[DC_bits];
+        }
+        else {
+            bit_num--;
+            category = 0;
+        }
+    }
+    // > 1110
+    else {
+        while (DC_bits[bit_num - 1] != '0') {
+            DC_bits = compressed_bitstream.substr(0, ++bit_num);
+        }
+        category = DC_bits.length() + 2;
+    }
+    compressed_bitstream = str_pop(compressed_bitstream, bit_num);
+
+    string diff_DC_codeword = compressed_bitstream.substr(0, category);
+    int diff_DC = diff_search(diff_DC_codeword);
+    compressed_bitstream = str_pop(compressed_bitstream, category);
+
+    int DC = last_DC + diff_DC;
+    return DC;
+}
+
+
+vector<SnakeBody> ac_decode() {
+    // AC decode
+    vector<SnakeBody> ac_snake;
+    int bit_num, category;
+    while (compressed_bitstream.length() > 0)
+    {
+        string ac_codeword = compressed_bitstream.substr(0, 4);
+
+        if (ac_codeword.compare("1010") == 0) {
+            compressed_bitstream = str_pop(compressed_bitstream, 4);
+            ac_snake.push_back(SnakeBody(-1, 0));
+            break;
+        }
+        bit_num = 2;
+        ac_codeword = compressed_bitstream.substr(0, bit_num);
+        while (invert_AC_table.find(ac_codeword) == invert_AC_table.end()) {
+            ac_codeword = compressed_bitstream.substr(0, ++bit_num);
+        }
+        compressed_bitstream = str_pop(compressed_bitstream, bit_num);
+
+        vector<int> indices = invert_AC_table[ac_codeword];
+        int run = indices[0];
+        category = indices[1];
+        string diff_codeword = compressed_bitstream.substr(0, category);
+        compressed_bitstream = str_pop(compressed_bitstream, category);
+
+        int diff_AC = diff_search(diff_codeword);
+        ac_snake.push_back(SnakeBody(run, diff_AC));
+    }
+    return ac_snake;
+}
+
 float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
     int n = 8;
     float** block = create_2D_array(n);
@@ -455,11 +587,11 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
     for (int i = 0; i < image_width; ++i) {
         for (int j = 0; j < image_width; ++j) {
-            if (gray_img[i][j] > 255) {
-                gray_img[i][j] = 255;
-            }
+            //if (gray_img[i][j] > 255) {
+            //    gray_img[i][j] = 255;
+            //}
 
-            char pixel = round(gray_img[i][j]);
+            char pixel = gray_img[i][j];
             putc(pixel, output->file);
         }
     }
@@ -468,22 +600,22 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
 
 
 int main() {
-    //int temp_block[8][8] = {
-    //{236, -1, -12, -5, 2, -2, -3, 1},
-    //{-23, -17, -6, -3, -3, 0, 0, -1},
-    //{-11, -9, -2, 2, 0, -1, -1, 0},
-    //{-7, -2, 0, 1, 1, 0, 0, 0},
-    //{-1, -1, 1, 2, 0, -1, 1, 1},
-    //{2, 0, 2, 0, -1, 1, 1, -1},
-    //{-1, 0, 0, -1, 0, 2, 1, -1},
-    //{-3, 2, -4, -2, 2, 1, -1, 0},
-    //};
-    //float** block = create_2D_array(8);
-    //for (int i = 0; i < 8; i++) {
-    //    for (int j = 0; j < 8; j++) {
-    //        block[i][j] = temp_block[i][j];
-    //    }
-    //}    
+    /*int temp_block[8][8] = {
+    {236, -1, -12, -5, 2, -2, -3, 1},
+    {-23, -17, -6, -3, -3, 0, 0, -1},
+    {-11, -9, -2, 2, 0, -1, -1, 0},
+    {-7, -2, 0, 1, 1, 0, 0, 0},
+    {-1, -1, 1, 2, 0, -1, 1, 1},
+    {2, 0, 2, 0, -1, 1, 1, -1},
+    {-1, 0, 0, -1, 0, 2, 1, -1},
+    {-3, 2, -4, -2, 2, 1, -1, 0},
+    };
+    float** block = create_2D_array(8);
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            block[i][j] = temp_block[i][j];
+        }
+    }
     //quantize(block, 50);
     //invert_quantize(block, 50);
     //float** block = create_2D_array(8);
@@ -507,10 +639,39 @@ int main() {
     //block[1][0] = -3;
     //block[1][3] = -1;
     //block[2][0] = 1;
+    
+    //compressed_bitstream = "10010101000110001000001111101001010";
+    //int last_DC = 34;
+    //get_invert_tables();
+    //// DC decode
+    //int DC = dc_decode(last_DC);
+    //last_DC = DC;
+
+    ////// AC decode
+    //vector<SnakeBody> ac_snake = ac_decode();
+
+    //// AC_run_length decode
+    //block = invert_AC_run_length(DC, ac_snake);
+
+    // invert dct processing
+    //idct2(block, 8);
+    //for (int i = 0; i < 8; i++) {
+    //    for (int j = 0; j < 8; j++) {
+    //        cout << round(block[i][j])<<" ";
+    //    }
+    //    cout << endl;
+    //}    
+    //cout << endl;
+    //dct2(block, 8);
+    //for (int i = 0; i < 8; i++) {
+    //    for (int j = 0; j < 8; j++) {
+    //        cout << round(block[i][j]) << " ";
+    //    }
+    //    cout << endl;
+    //}
 
 
-
-    /*vector<SnakeBody> snake_vec = AC_run_length(block);
+    vector<SnakeBody> snake_vec = AC_run_length(block);
     string ac_codewords = AC_encode(snake_vec);
     string dc_codewords = DC_encode(block[0][0]);
     string codewords = dc_codewords + ac_codewords;*/
@@ -566,6 +727,7 @@ int main() {
 
     int n = 8;
     int image_width = 512;
+    get_invert_tables();
     //cout << original_img[255][256] << endl;
     //cout << original_img[256][256] << endl;
 
@@ -651,31 +813,30 @@ int main() {
         printf("Space saving: %0.2f%% \n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
 
         // decode
-        string compressed_bitstream = read_jpg(filename);
+        //string compressed_bitstream = read_jpg(filename);
+        compressed_bitstream = read_jpg(filename);
         int stream_len = compressed_bitstream.length();
 
         cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
 
-        // build a new table equals to map<code, diff>
-        for (const auto& pair : diff_table) {
-            invert_diff_table[pair.second] = pair.first;
-        }
-        map<string, vector<int>> invert_AC_table;
-        // build a new table equals to map<code, diff>
-        for (const auto& pair : AC_table) {
-            invert_AC_table[pair.second] = pair.first;
-        }
-        map<string, int> invert_DC_table;
-        // build a new table equals to map<code, diff>
-        for (int i = 0; i < DC_table.size(); i++) {
-            invert_DC_table[DC_table[i]] = i;
-        }
+        //// build a new table equals to map<code, diff>
+        //for (const auto& pair : diff_table) {
+        //    invert_diff_table[pair.second] = pair.first;
+        //}
+        //map<string, vector<int>> invert_AC_table;
+        //// build a new table equals to map<code, diff>
+        //for (const auto& pair : AC_table) {
+        //    invert_AC_table[pair.second] = pair.first;
+        //}
+        //map<string, int> invert_DC_table;
+        //// build a new table equals to map<code, diff>
+        //for (int i = 0; i < DC_table.size(); i++) {
+        //    invert_DC_table[DC_table[i]] = i;
+        //}
 
         float** uncompressed_img = create_2D_array(image_width);
 
         x_pos = 0, y_pos = 0;
-        //x_pos = 296, y_pos = 496;
-        //compressed_bitstream = str_pop(compressed_bitstream, 448000);
         last_DC = 0;
 
         while (y_pos < image_width) {
@@ -685,62 +846,11 @@ int main() {
             float** block = create_2D_array(n);
 
             // DC decode
-            string DC_bits = compressed_bitstream.substr(0, bit_num);
-            // < 1110
-            if (DC_bits < DC_table[6]) {
-                DC_bits = compressed_bitstream.substr(0, --bit_num);
-
-                if (invert_DC_table.find(DC_bits) != invert_DC_table.end()) {
-                    category = invert_DC_table[DC_bits];
-                }
-                else {
-                    bit_num--;
-                    category = 0;
-                }
-            }
-            // > 1110
-            else {
-                while (DC_bits[bit_num - 1] != '0') {
-                    DC_bits = compressed_bitstream.substr(0, ++bit_num);
-                }
-                category = DC_bits.length() + 2;
-            }
-            compressed_bitstream = str_pop(compressed_bitstream, bit_num);
-
-            string diff_DC_codeword = compressed_bitstream.substr(0, category);
-            int diff_DC = invert_diff_table[diff_DC_codeword];
-            compressed_bitstream = str_pop(compressed_bitstream, category);
-            
-            int DC = last_DC + diff_DC;
+            int DC = dc_decode(last_DC);
             last_DC = DC;
 
-            // AC decode
-            vector<SnakeBody> ac_snake;
-            while (compressed_bitstream.length()>0)
-            {
-                string ac_codeword = compressed_bitstream.substr(0, 4);
-
-                if (ac_codeword.compare("1010") == 0) {
-                    compressed_bitstream = str_pop(compressed_bitstream, 4);
-                    ac_snake.push_back(SnakeBody(-1, 0));
-                    break;
-                }
-                bit_num = 2;
-                ac_codeword = compressed_bitstream.substr(0, bit_num);
-                while (invert_AC_table.find(ac_codeword) == invert_AC_table.end()) {
-                    ac_codeword = compressed_bitstream.substr(0, ++bit_num);
-                }
-                compressed_bitstream = str_pop(compressed_bitstream, bit_num);
-
-                vector<int> indices = invert_AC_table[ac_codeword];
-                int run = indices[0];
-                category = indices[1];
-                string diff_codeword = compressed_bitstream.substr(0, category);
-                compressed_bitstream = str_pop(compressed_bitstream, category);
-
-                int diff_AC = invert_diff_table[diff_codeword];
-                ac_snake.push_back(SnakeBody(run, diff_AC));
-            }
+            //// AC decode
+            vector<SnakeBody> ac_snake = ac_decode();
 
             // AC_run_length decode
             block = invert_AC_run_length(DC, ac_snake);
@@ -753,7 +863,7 @@ int main() {
             // push 8*8 block to uncompressed image
             for (int i = 0; i < n; i++) {
                 for (int j = 0; j < n; j++) {
-                    uncompressed_img[x_pos + i][y_pos + j] = block[i][j]+128;
+                    uncompressed_img[x_pos + i][y_pos + j] = round(block[i][j])+128;
                 }
             }
 
