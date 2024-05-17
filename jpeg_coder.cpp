@@ -136,7 +136,7 @@ void invert_quantize(float** x, int QF) {
         for (int j = 0; j < 8; j++) {
             float qij = QUAN_MATRIX[i][j] * factor / 100;
             x[i][j] *= qij;
-            x[i][j] = round(x[i][j]);
+            //x[i][j] = round(x[i][j]);
             //x[i][j] += 128;
             /*if (x[i][j] > 255) {
                 x[i][j] = 255;
@@ -153,6 +153,9 @@ struct SnakeBody {
     int zeros;
     float value;
     SnakeBody(int z, float v) { zeros = z; value = v; };
+    bool operator==(const SnakeBody& s2) const{
+        return zeros == s2.zeros && value == s2.value;
+    }
 };
 
 vector<SnakeBody> AC_run_length(float** block) {
@@ -167,7 +170,13 @@ vector<SnakeBody> AC_run_length(float** block) {
                 zeros++;
             }
             else {
-                snake_vec.push_back(SnakeBody(zeros, block[i][j]));
+                if (zeros > 15) {
+                    snake_vec.push_back(SnakeBody(15, 0));
+                    snake_vec.push_back(SnakeBody(zeros-15, block[i][j]));
+                }
+                else {
+                    snake_vec.push_back(SnakeBody(zeros, block[i][j]));
+                }
                 zeros = 0;
             }
         }
@@ -185,7 +194,7 @@ vector<SnakeBody> AC_run_length(float** block) {
         }
 
     }
-    snake_vec.push_back(SnakeBody(-1, EOF));
+    snake_vec.push_back(SnakeBody(-1, 0));
 
     return snake_vec;
 }
@@ -257,6 +266,9 @@ string AC_encode(vector<SnakeBody> snake_vec) {
         int category = floor(log2(abs(s.value))) + 1;
         if (s.zeros == -1) {
             codeword = "1010";
+        }
+        else if (s.zeros == 15 && s.value == 0) {
+            codeword = AC_table[{15, 0}];
         }
         else {
             string coefficient_codeword = intToBinaryString(s.value);
@@ -428,7 +440,6 @@ string read_jpg(string filename) {
         else {
             bitstream.clear(); // 如果全是0，则清空字符串
         }
-        //cout << "Decoded string: " << compressed_img_str << endl;
         //cout << "Read " << bitstream.length() << " bits." << endl;
 
         jpgFile.close();
@@ -512,7 +523,7 @@ vector<SnakeBody> ac_decode() {
         string diff_codeword = compressed_bitstream.substr(0, category);
         compressed_bitstream = str_pop(compressed_bitstream, category);
 
-        int diff_AC = diff_search(diff_codeword);
+        int diff_AC = (category==0) ? 0: diff_search(diff_codeword);
         ac_snake.push_back(SnakeBody(run, diff_AC));
     }
     return ac_snake;
@@ -545,10 +556,17 @@ float** invert_AC_run_length(int DC, vector<SnakeBody> ac_snake) {
                 int value;
                 if (ac_snake.size() == 0) value = 0; 
                 else value = ac_snake[snake_id].value;
+                
+                // <15,0>
+                if ((value == 0 && zeros == 0)){
+                    snake_id++;
+                    zeros = ac_snake[snake_id].zeros;
+                    value = ac_snake[snake_id].value;
+                }
                 block[i][j] = value;
                 
                 // not EOF, snake_id++
-                if (value != 0) {
+                if (value != 0 ){//} || value == 0 && zeros == 0) {
                     snake_id++;
                     zeros = ac_snake[snake_id].zeros;
                 }
@@ -582,25 +600,41 @@ char* str2chararr(string str_name) {
 
 
 void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
-
-    BIT_FILE* output = OpenOutputBitFile(str2chararr(decode_raw_name));
-
-    for (int i = 0; i < image_width; ++i) {
-        for (int j = 0; j < image_width; ++j) {
-            //if (gray_img[i][j] > 255) {
-            //    gray_img[i][j] = 255;
-            //}
-
-            char pixel = gray_img[i][j];
-            putc(pixel, output->file);
+    ofstream outputFile(decode_raw_name, ios::binary);
+    if (outputFile.is_open()) {
+        for (int i = 0; i < image_width; ++i) {
+            for (int j = 0; j < image_width; ++j) {
+                unsigned char value = gray_img[i][j];
+                outputFile.write(reinterpret_cast<const char*>(&value), sizeof(value));
+            }
         }
+        outputFile.close();
     }
-    CloseOutputBitFile(output);
+    else {
+        cerr << "Unable to open file." << endl;
+    }
+    //BIT_FILE* output = OpenOutputBitFile(str2chararr(decode_raw_name));
+
+    //for (int i = 0; i < image_width; ++i) {
+    //    for (int j = 0; j < image_width; ++j) {
+    //        //if (gray_img[i][j] > 255) {
+    //        //    gray_img[i][j] = 255;
+    //        //}
+    //        cout << gray_img[i][j] << endl;
+    //        cout << char(gray_img[i][j]) << endl;
+    //        char pixel = gray_img[i][j];
+    //        putc(pixel, output->file);
+    //    }
+    //}
+    //CloseOutputBitFile(output);
 }
 
 
 int main() {
-    /*int temp_block[8][8] = {
+    /*float** gray_img = read_raw_img("./Test Images/GrayImages/Lena.raw");
+    write_gray_img(gray_img, "Lena_test.raw", 512);
+    cout << "Lena_test.raw" << endl;
+    int temp_block[8][8] = {
     {236, -1, -12, -5, 2, -2, -3, 1},
     {-23, -17, -6, -3, -3, 0, 0, -1},
     {-11, -9, -2, 2, 0, -1, -1, 0},
@@ -615,7 +649,7 @@ int main() {
         for (int j = 0; j < 8; j++) {
             block[i][j] = temp_block[i][j];
         }
-    }
+    }*/
     //quantize(block, 50);
     //invert_quantize(block, 50);
     //float** block = create_2D_array(8);
@@ -641,14 +675,36 @@ int main() {
     //block[2][0] = 1;
     
     //compressed_bitstream = "10010101000110001000001111101001010";
+    /*compressed_bitstream = "1111111100111101001010";
+
+    float** block = create_2D_array(8);
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            block[i][j] = 0;
+        }
+    }    
+    block[1][4] = -1;
+    vector<SnakeBody> snake_vec = AC_run_length(block);
+    string ac_codewords = AC_encode(snake_vec);*/
+
     //int last_DC = 34;
     //get_invert_tables();
     //// DC decode
     //int DC = dc_decode(last_DC);
     //last_DC = DC;
 
-    ////// AC decode
+    //// AC decode
     //vector<SnakeBody> ac_snake = ac_decode();
+    //float** block2 = invert_AC_run_length(0, snake_vec);
+    //for (int i = 0; i < 8; i++) {
+    //    for (int j = 0; j < 8; j++) {
+    //        cout << round(block2[i][j])<<" ";
+    //    }
+    //    cout << endl;
+    //}
+    //string ac_codewords = AC_encode(ac_snake);
+    //string dc_codewords = DC_encode(0);
+    //dc_codewords = DC_encode(0);
 
     //// AC_run_length decode
     //block = invert_AC_run_length(DC, ac_snake);
@@ -671,7 +727,7 @@ int main() {
     //}
 
 
-    vector<SnakeBody> snake_vec = AC_run_length(block);
+    /*vector<SnakeBody> snake_vec = AC_run_length(block);
     string ac_codewords = AC_encode(snake_vec);
     string dc_codewords = DC_encode(block[0][0]);
     string codewords = dc_codewords + ac_codewords;*/
@@ -732,7 +788,12 @@ int main() {
     //cout << original_img[256][256] << endl;
 
     // encoding, scan 512 * 512 with 8 * 8 DCT
-    for (const int QF : {90, 80, 50, 20, 10, 5}) {
+    for (const int QF : {5, 10, 20, 50, 80, 90}) {
+        vector<vector<SnakeBody>> all_snakes_encode;
+        vector<vector<SnakeBody>> all_snakes_decode;
+        vector<vector<unsigned char>> all_blocks_encode;
+        vector<vector<unsigned char>> all_blocks_decode;
+
         int x_pos = 0, y_pos = 0;
         int last_DC = 0;
         string bitstream = "";
@@ -752,6 +813,7 @@ int main() {
                     block[i][j] = original_img[x_pos + i][y_pos + j]-128;
                 }
             }
+
             // dct processing
             dct2(block, n);
             // Quantization
@@ -762,14 +824,24 @@ int main() {
             last_DC = block[0][0];
             string dc_codewords = DC_encode(diff_DC);
 
+            // save block for debugging
+            vector <unsigned char> temp_block(64);
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    temp_block[i * 8 + j] = block[i][j];
+                }
+            }
+            all_blocks_encode.push_back(temp_block);
+
             // AC encode
             vector<SnakeBody> snake_vec = AC_run_length(block);
             string ac_codewords = AC_encode(snake_vec);
             //cout << snake_vec.size()<<endl;
             /*for (int i = 0; i < snake_vec.size();i++) {
-                cout << int(snake_vec[i].zeros) << " " << int(snake_vec[i].value) << endl;
-            }*/
-
+                cout << "<"<<int(snake_vec[i].zeros) << ", " << int(snake_vec[i].value) <<"> ";
+            }
+            cout << "EOF" << endl;*/
+            all_snakes_encode.push_back(snake_vec);
             string codewords = dc_codewords + ac_codewords;
             bitstream += codewords;
 
@@ -795,7 +867,7 @@ int main() {
         // save as .hahajpg
         string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
         cout << filename << endl;
-        cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+        //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
         write_jpg(filename, bitstream);
 
         // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
@@ -815,24 +887,10 @@ int main() {
         // decode
         //string compressed_bitstream = read_jpg(filename);
         compressed_bitstream = read_jpg(filename);
-        int stream_len = compressed_bitstream.length();
+        // int stream_len = compressed_bitstream.length();
 
-        cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
-
-        //// build a new table equals to map<code, diff>
-        //for (const auto& pair : diff_table) {
-        //    invert_diff_table[pair.second] = pair.first;
-        //}
-        //map<string, vector<int>> invert_AC_table;
-        //// build a new table equals to map<code, diff>
-        //for (const auto& pair : AC_table) {
-        //    invert_AC_table[pair.second] = pair.first;
-        //}
-        //map<string, int> invert_DC_table;
-        //// build a new table equals to map<code, diff>
-        //for (int i = 0; i < DC_table.size(); i++) {
-        //    invert_DC_table[DC_table[i]] = i;
-        //}
+        // cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
+        // cout << compressed_bitstream.compare(bitstream) << endl; // the same
 
         float** uncompressed_img = create_2D_array(image_width);
 
@@ -849,11 +907,22 @@ int main() {
             int DC = dc_decode(last_DC);
             last_DC = DC;
 
-            //// AC decode
+            // AC decode
             vector<SnakeBody> ac_snake = ac_decode();
+            all_snakes_decode.push_back(ac_snake);
+
 
             // AC_run_length decode
             block = invert_AC_run_length(DC, ac_snake);
+
+            // save block for debugging
+            vector <unsigned char> temp_block(64);
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    temp_block[i * 8 + j] = block[i][j];
+                }
+            }
+            all_blocks_decode.push_back(temp_block);
 
             // invert Quantization
             invert_quantize(block, QF);
@@ -863,7 +932,7 @@ int main() {
             // push 8*8 block to uncompressed image
             for (int i = 0; i < n; i++) {
                 for (int j = 0; j < n; j++) {
-                    uncompressed_img[x_pos + i][y_pos + j] = round(block[i][j])+128;
+                    uncompressed_img[x_pos + i][y_pos + j] = round(block[i][j]+128);
                 }
             }
 
@@ -881,7 +950,60 @@ int main() {
 
         cout << endl<<"output path: " << decode_raw_name << endl << endl;
 
+        // compare snakes
+        for (int i = 0; i < 64; i++) {
+            if (!(all_snakes_decode[i] == all_snakes_encode[i])) {
+                cout << endl<<"decoder snake:" << endl;
+                cout << "size: " << all_snakes_decode[i].size() << endl;
+                for (int j = 0; j < all_snakes_decode[i].size();j++) {
+                    cout << "<"<<int(all_snakes_decode[i][j].zeros) << ", " << int(all_snakes_decode[i][j].value) <<"> ";
+                }
+                cout << endl;
+                cout << "encoder snake:" << endl;
+                cout << "size: " << all_snakes_encode[i].size() << endl;
+                for (int j = 0; j < all_snakes_encode[i].size(); j++) {
+                    cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
+                }
+                cout << endl;
+            }
+            else {
+                cout << "true ";
+            }
+        }
+        cout << endl;
+        //compare blocks
+        for (int i = 0; i < 64; i++) {
+            if (!(all_blocks_decode[i] == all_blocks_encode[i])) {
+                cout << "encoder snake:" << endl;
+                cout << "size: " << all_snakes_encode[i].size() << endl;
+                for (int j = 0; j < all_snakes_encode[i].size(); j++) {
+                    cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
+                }
+                cout << endl << "decoder block:" << endl;
+                for (int k = 0; k < 8; k++) {
+                    for (int j = 0; j < 8; j++) {
+                        cout << round(all_blocks_decode[i][k*8+j]) << " ";
+                    }
+                    cout << endl;
+                }
+                cout << endl;
+                cout << "encoder block:" << endl;
+                for (int k = 0; k < 8; k++) {
+                    for (int j = 0; j < 8; j++) {
+                        cout << round(all_blocks_encode[i][k * 8 + j]) << " ";
+                    }
+                    cout << endl;
+                }
+                cout << endl;
+            }
+            else {
+                cout << "true ";
+            }
+
+        }
+        cout << endl;
     }
+    cout << endl;
 
 
 

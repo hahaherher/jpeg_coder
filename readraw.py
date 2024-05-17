@@ -24,19 +24,16 @@ def read_raw(file:str,shape:tuple,dtype):
     # 返回数据
     return data
 
-img = read_raw(f"/content/Lena.raw",(512,512,1),dtype=np.uint8)
+# raw_path = f"./Test Images/GrayImages/Lena.raw"
+raw_path = f"./Lena_test.raw"
+img = read_raw(raw_path,(512,512,1),dtype=np.uint8)
 print(type(img))
 print(np.shape(img))
+cv2.imwrite(f"lena_test.jpg",img)
 
 
-#dst = cv2.cvtColor(img,cv2.COLOR_RGB2BGR)
-#print(np.shape(dst))
-#cv2.imwrite(f"{QF}.jpg",dst)
-cv2.imwrite(f"lena.jpg",img)
-
-
-for QF in [5, 10, 20, 50, 80, 90]:
-  img = read_raw(f"/content/Lena_QF{QF}_decoded.raw",(512,512,1),dtype=np.uint8)
+for QF in [80,5, 10, 20, 50,  90]:
+  img = read_raw(f"./Lena_QF{QF}_decoded.raw",(512,512,1),dtype=np.uint8)
   print(type(img))
   print(np.shape(img))
 
