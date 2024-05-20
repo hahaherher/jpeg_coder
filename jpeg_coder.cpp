@@ -11,6 +11,35 @@
 
 using namespace std;
 
+struct RGB_Point {
+    float R;
+    float G;
+    float B;
+    RGB_Point(float r, float g, float b) { R = r, G = g, B = b; }
+};
+
+struct YCbCr_Point {
+    float Y;
+    float Cb;
+    float Cr;
+    YCbCr_Point(float y, float cb, float cr) { Y = y, Cb = cb, Cr = cr; }
+};
+
+YCbCr_Point toYCbCr(RGB_Point p){
+    float Y = 0.299 * p.R + 0.587 * p.G + 0.114 * p.B;
+    float Cb = -0.16875 * p.R - 0.33126 * p.G + 0.5 * p.B;
+    float Cr = 0.5 * p.R - 0.41869 * p.G - 0.08131 * p.B;
+    return YCbCr_Point(Y, Cb, Cr);
+}
+
+
+RGB_Point toRGB(YCbCr_Point p){
+    float R = p.Y + 1.402 * p.Cr;
+    float G = p.Y - 0.34413 * p.Cb - 0.71414 * p.Cr;
+    float B = p.Y + 1.772 * p.Cb;
+    return RGB_Point(R, G, B);
+}
+
 float** create_2D_array(int n) {
     // 二维 float array
     float** array_2D = new float* [n]; // 创建指向 float 指针的指针
@@ -20,6 +49,52 @@ float** create_2D_array(int n) {
 
     return array_2D;
 }
+
+
+float*** create_3D_array(int n) {
+    // 二维 float array
+    float*** array_3D = new float** [3]; // 创建指向 float 指针的指针
+    for (int i = 0; i < 3; ++i) {
+        array_3D[i] = create_2D_array(n);
+    }
+    return array_3D;
+}
+
+
+float*** read_color_raw_img(string file_name) {
+    ifstream rawFile(file_name, ios::in | ios::binary);
+
+    // 獲取檔案大小
+    rawFile.seekg(0, ios::end);
+    streampos fileSize = rawFile.tellg();
+    rawFile.seekg(0, ios::beg);
+
+    // 讀取所有數據到vector
+    vector<unsigned char> temp_vec(fileSize);
+    rawFile.read(reinterpret_cast<char*>(temp_vec.data()), fileSize);
+
+
+    // 3维 float array
+    int n = sqrt(int(fileSize/3));
+    float*** original_img = create_3D_array(n);
+
+    // 讀取 vector 數據到 float array
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            for (int c = 0; c < 3; c++) {
+                original_img[c][i][j] = temp_vec[i * n*3 + j * 3 + c];
+            }
+        }
+    }
+
+    cout << "已成功讀取 " << int(fileSize) << " 個字節的數據" << endl << endl;
+
+    // 關閉檔案
+    rawFile.close();
+
+    return original_img;
+}
+
 
 float** read_raw_img(string file_name) {
     ifstream rawFile(file_name, ios::in | ios::binary);
@@ -629,7 +704,7 @@ int main() {
     //float** gray_img = read_raw_img("./Test Images/GrayImages/Lena.raw");
     //write_gray_img(gray_img, "Lena_test.raw", 512);
     //cout << "Lena_test.raw" << endl;
-    int temp_block[8][8] = {
+    /*int temp_block[8][8] = {
     {226, 0, 254, 0, 0, 0, 0, 0},
     {255, 255, 0, 0, 0, 0, 0, 0},
     {255, 0, 0, 0, 0, 0, 0, 0},
@@ -637,7 +712,7 @@ int main() {
     {0, 0, 1, 0, 0, 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0}};
+    {0, 0, 0, 0, 0, 0, 0, 0}};*/
 
     /*int temp_block[8][8] = {
     {236, -1, -12, -5, 2, -2, -3, 1},
@@ -659,12 +734,12 @@ int main() {
         0 0 0 0 0 0 0 0
         0 0 0 0 0 0 0 0
 */
-    float** block = create_2D_array(8);
+    /*float** block = create_2D_array(8);
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             block[i][j] = temp_block[i][j];
         }
-    }
+    }*/
     //quantize(block, 50);
     //invert_quantize(block, 50);
     //float** block = create_2D_array(8);
@@ -699,8 +774,8 @@ int main() {
         }
     }    
     block[1][4] = -1;*/
-    vector<SnakeBody> snake_vec = AC_run_length(block);
-    string ac_codewords = AC_encode(snake_vec);
+    /*vector<SnakeBody> snake_vec = AC_run_length(block);
+    string ac_codewords = AC_encode(snake_vec);*/
 
     //int last_DC = 34;
     //get_invert_tables();
@@ -775,7 +850,7 @@ int main() {
     cout << "Please choose the color type: ";
     //cin >> choice;
     cout << endl;
-    choice = 1;
+    choice = 2;
 
     if (choice == 1) {
         process_type = "";
@@ -795,6 +870,29 @@ int main() {
     cout << raw_name << " Loading..." << endl;
 
     float** original_img = read_raw_img(raw_name);
+    if (choice != 1) {
+        float*** original_color_img = read_color_raw_img(raw_name);
+        float*** YCbCr_img = create_3D_array(512);
+        
+        // convert RGB to YCbCr
+        for (int i = 0; i < 512; ++i) {
+            for (int j = 0; j < 512; ++j) {
+                for (int c = 0; c < 3; c++) {
+                    float R = original_color_img[0][i][j];
+                    float G = original_color_img[1][i][j];
+                    float B = original_color_img[2][i][j];
+                    YCbCr_Point p = toYCbCr(RGB_Point(R, G, B));
+                    YCbCr_img[0][i][j] = p.Y;
+                    YCbCr_img[1][i][j] = p.Cb;
+                    YCbCr_img[2][i][j] = p.Cr;
+                }
+            }
+        }
+        write_gray_img(YCbCr_img[0], img_name + process_type + "_Y.raw", 512);
+        write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb.raw", 512);
+        write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr.raw", 512);
+    }
+
 
     int n = 8;
     int image_width = 512;
