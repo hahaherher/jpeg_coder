@@ -7,7 +7,6 @@
 #include <bitset>
 
 #include "dct2.h"
-#include "bitio.h"
 
 using namespace std;
 
