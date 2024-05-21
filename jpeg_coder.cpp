@@ -85,7 +85,7 @@ float*** toYCbCr_img(float*** RGB_img) {
 
 
 float*** toRGB_img(float*** YCbCr_img) {
-    float*** RGB_img = create_3D_array(512);;
+    float*** RGB_img = create_3D_array(512);
     // convert RGB to YCbCr
     for (int i = 0; i < 512; ++i) {
         for (int j = 0; j < 512; ++j) {
@@ -138,17 +138,21 @@ float*** read_color_raw_img(string file_name) {
 }
 
 
-float*** subsampling(float*** YCbCr_img, string subsampling_mode) {
+void subsampling(float*** YCbCr_img, string subsampling_mode) {
     int x_pos = 0, y_pos = 0;
     int sub_num = subsampling_mode[subsampling_mode.length() - 1] - 48;
     while (y_pos < 512) {
         // scan 4*4 block from 512*512 image
         for (int i = 0; i < 4; i++) {
             for (int c = 1; c < 3; c++) {
-                YCbCr_img[c][x_pos + i][y_pos + 1] = 0;
-                YCbCr_img[c][x_pos + i][y_pos + 3] = 0;
+                float up_left = YCbCr_img[c][x_pos + i][y_pos];
+                YCbCr_img[c][x_pos + i][y_pos + 1] = up_left;
                 if (sub_num == 1) {
-                    YCbCr_img[c][x_pos + i][y_pos + 2] = 0;
+                    YCbCr_img[c][x_pos + i][y_pos + 2] = up_left;
+                    YCbCr_img[c][x_pos + i][y_pos + 3] = up_left;
+                }
+                else{
+                    YCbCr_img[c][x_pos + i][y_pos + 3] = YCbCr_img[c][x_pos + i][y_pos + 2];
                 }
             }
         }
@@ -159,7 +163,6 @@ float*** subsampling(float*** YCbCr_img, string subsampling_mode) {
             x_pos = 0;
         }
     }
-    return YCbCr_img;
 }
 
 float** read_raw_img(string file_name) {
@@ -247,7 +250,18 @@ int QUAN_MATRIX[8][8] = {
         {72, 92, 95, 98, 112, 100, 103, 99},
 };
 
-void quantize(float** x, int QF) {
+int QUAN_CHROM_MATRIX[8][8] = {
+        {17, 18, 24, 47, 99, 99, 99, 99},
+        {18, 21, 26, 66, 99, 99, 99, 99},
+        {24, 26, 56, 99, 99, 99, 99, 99},
+        {47, 66, 99, 99, 99, 99, 99, 99},
+        {99, 99, 99, 99, 99, 99, 99, 99},
+        {99, 99, 99, 99, 99, 99, 99, 99},
+        {99, 99, 99, 99, 99, 99, 99, 99},
+        {99, 99, 99, 99, 99, 99, 99, 99},
+};
+
+void quantize(float** x, int QF, int c) {
 
     float factor;
     if (QF < 50) {
@@ -258,7 +272,13 @@ void quantize(float** x, int QF) {
     }
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
-            float qij = QUAN_MATRIX[i][j] * factor / 100;
+            float qij;
+            if (c == 0) {
+                qij = QUAN_MATRIX[i][j] * factor / 100;
+            }
+            else {
+                qij = QUAN_CHROM_MATRIX[i][j] * factor / 100;
+            }
             x[i][j] = round(x[i][j] / qij);
             //x[i][j] = round(x[i][j]);
         }
@@ -266,7 +286,7 @@ void quantize(float** x, int QF) {
 }
 
 
-void invert_quantize(float** x, int QF) {
+void invert_quantize(float** x, int QF, int c) {
     float factor;
     if (QF < 50) {
         factor = 5000 / QF;
@@ -276,7 +296,13 @@ void invert_quantize(float** x, int QF) {
     }
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
-            float qij = QUAN_MATRIX[i][j] * factor / 100;
+            float qij;
+            if (c == 0) {
+                qij = QUAN_MATRIX[i][j] * factor / 100;
+            }
+            else {
+                qij = QUAN_CHROM_MATRIX[i][j] * factor / 100;
+            }
             x[i][j] *= qij;
             x[i][j] = round(x[i][j]);
         }
@@ -510,6 +536,26 @@ double calculatePSNR(float** original_img, float** processed_img, int image_widt
         }
     }
     double MSE = (double)sum / (image_width * image_width);
+    double PSNR = 10.0f * log10((double)max * max / MSE);
+
+    return PSNR;
+}
+
+
+double calculatePSNR(float*** original_img, float*** processed_img, int image_width) {
+    int max = 0;
+    double sum = 0;
+    for (int c = 0; c < 3; c++) {
+        for (int i = 0; i < image_width; i++) {
+            for (int j = 0; j < image_width; j++) {
+                if (original_img[c][i][j] > max) max = original_img[c][i][j];
+                int diff = (original_img[c][i][j] - processed_img[c][i][j]);
+                sum += diff * diff;
+            }
+        }
+    }
+    double MSE = (double)sum / (image_width * image_width * 3);
+    //cout << MSE<<" "<<max * max / MSE << endl;
     double PSNR = 10.0f * log10((double)max * max / MSE);
 
     return PSNR;
@@ -765,6 +811,23 @@ void write_gray_img(float** gray_img, string decode_raw_name, int image_width) {
     }
 }
 
+void write_color_img(float*** color_img, string decode_raw_name, int image_width) {
+    ofstream outputFile(decode_raw_name, ios::binary);
+    if (outputFile.is_open()) {
+        for (int i = 0; i < image_width; ++i) {
+            for (int j = 0; j < image_width; ++j) {
+                for (int c : {0, 1, 2}) {
+                    unsigned char value = color_img[c][i][j];
+                    outputFile.write(reinterpret_cast<const char*>(&value), sizeof(value));
+                }
+            }
+        }
+        outputFile.close();
+    }
+    else {
+        cerr << "Unable to open file." << endl;
+    }
+}
 
 int main() {
     //float** gray_img = read_raw_img("./Test Images/GrayImages/Lena.raw");
@@ -896,9 +959,9 @@ int main() {
     cout << "Lena: 1" << endl;
     cout << "Baboon: 2" << endl;
     cout << "Please choose the image: ";
-    //cin >> choice;
+    cin >> choice;
     cout << endl;
-    choice = 1;
+    //choice = 1;
 
     if (choice == 1) {
         img_name = "Lena";
@@ -914,9 +977,9 @@ int main() {
     cout << "Gray: 1" << endl;
     cout << "RGB: 2" << endl;
     cout << "Please choose the color type: ";
-    //cin >> choice;
+    cin >> choice;
     cout << endl;
-    choice = 2;
+    //choice = 2;
 
     if (choice == 1) {
         process_type = "";
@@ -935,262 +998,437 @@ int main() {
     string raw_name = data_path + img_name + process_type + ".raw"; //"./Data/RAW/lena_decode.raw";
     cout << raw_name << " Loading..." << endl;
 
-    float** original_img = read_raw_img(raw_name);
+    int n = 8;
+    int image_width = 512;
+    get_invert_tables();
+
     if (choice != 1) {
         float*** original_color_img = read_color_raw_img(raw_name);
         float*** YCbCr_img = toYCbCr_img(original_color_img);
         
-        write_gray_img(YCbCr_img[0], img_name + process_type + "_Y.raw", 512);
-        write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb.raw", 512);
-        write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr.raw", 512);
+        //write_gray_img(YCbCr_img[0], img_name + process_type + "_Y.raw", 512);
+        //write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb.raw", 512);
+        //write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr.raw", 512);
+        //float*** RGB_img0 = toRGB_img(YCbCr_img);
+        //write_color_img(RGB_img0, img_name + process_type + "_RGB.raw", 512);
+
 
         // subsampling mode
         cout << "4:4:4 mode: 1" << endl;
         cout << "4:2:2 mode: 2" << endl;
         cout << "4:1:1 mode: 3" << endl;
         cout << "Please choose the Subsampling mode: ";
-        //cin >> choice;
+        cin >> choice;
         cout << endl;
-        choice = 2;
+        //choice = 3;
         string subsampling_mode;
 
         if (choice == 2) {
             subsampling_mode = "422";
-            YCbCr_img = subsampling(YCbCr_img, subsampling_mode);
-            write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb_" + subsampling_mode + ".raw", 512);
-            write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr_" + subsampling_mode + ".raw", 512);
+            subsampling(YCbCr_img, subsampling_mode);
+            //write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb_" + subsampling_mode + ".raw", 512);
+            //write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr_" + subsampling_mode + ".raw", 512);
+            //float*** RGB_img = toRGB_img(YCbCr_img);
+            //write_color_img(RGB_img, img_name + process_type + "_RGB_" + subsampling_mode + ".raw", 512);
         }
         else if (choice == 3) {
             subsampling_mode = "411";
-            YCbCr_img = subsampling(YCbCr_img, subsampling_mode);
+            subsampling(YCbCr_img, subsampling_mode);
+        }  
+
+        // encoding, scan 512 * 512 with 8 * 8 DCT
+        for (const int QF : {5, 10, 20, 50, 80, 90}) {
+            vector<vector<SnakeBody>> all_snakes_encode;
+            vector<vector<SnakeBody>> all_snakes_decode;
+            vector<vector<char>> all_blocks_encode;
+            vector<vector<char>> all_blocks_decode;
+
+            
+            string bitstream = "";
+            float*** processed_img = create_3D_array(image_width);
+
+            for (int c : {0, 1, 2}) {
+                int x_pos = 0, y_pos = 0;
+                int last_DC = 0;
+                while (y_pos < image_width) {
+                    // create empty 8*8 block
+                    float** block = create_2D_array(n);
+
+                    //float** block = new float* [8];
+                    //for (int i = 0; i < 8; ++i) {
+                    //    block[i] = new float[8]; // 为每行创建 float 数组
+                    //}
+                    // scan 8*8 block from 512*512 image
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            block[i][j] = YCbCr_img[c][x_pos + i][y_pos + j] - 128;
+                        }
+                    }
+
+                    // dct processing
+                    dct2(block, n);
+                    // Quantization
+                    quantize(block, QF, c);
+
+                    // DC encode
+                    int diff_DC = block[0][0] - last_DC;
+                    last_DC = block[0][0];
+                    string dc_codewords = DC_encode(diff_DC);
+
+                    // save block for debugging
+                    vector <char> temp_block(64);
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            temp_block[i * 8 + j] = block[i][j];
+                        }
+                    }
+                    all_blocks_encode.push_back(temp_block);
+
+                    // AC encode
+                    vector<SnakeBody> snake_vec = AC_run_length(block);
+                    string ac_codewords = AC_encode(snake_vec);
+                    //cout << snake_vec.size()<<endl;
+                    /*for (int i = 0; i < snake_vec.size();i++) {
+                        cout << "<"<<int(snake_vec[i].zeros) << ", " << int(snake_vec[i].value) <<"> ";
+                    }
+                    cout << "EOF" << endl;*/
+                    all_snakes_encode.push_back(snake_vec);
+                    string codewords = dc_codewords + ac_codewords;
+                    bitstream += codewords;
+
+                    // push 8*8 block to processed image
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            processed_img[c][x_pos + i][y_pos + j] = block[i][j];
+                        }
+                    }
+
+                    // move to next 8*8 position
+                    x_pos += 8;
+                    if (x_pos == image_width) {
+                        y_pos += 8;
+                        x_pos = 0;
+                    }
+                }
+            }
+
+            // save as .hahajpg
+            string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
+            cout << filename << endl;
+            //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+            write_jpg(filename, bitstream);
+
+            // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+            //double PSNR = calculatePSNR(YCbCr_img, processed_img, image_width);
+            //printf("QF = %d, PSNR = %lf\n", QF, PSNR);
+
+            // compare the file size
+            size_t uncompressed_file_size = image_width * image_width * 3; // 65536
+            size_t compressed_file_size = bitstream.length() / 8; // 499680 / 8 = 62460
+
+            int uncompressed_file_kb = roundf(float(uncompressed_file_size) / 1024); //64KB
+            int compressed_file_kb = roundf(float(compressed_file_size) / 1024); //60KB
+            printf("original file size: %zd Bytes (= %d KB). \n", uncompressed_file_size, uncompressed_file_kb);
+            printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
+            printf("Space saving: %0.2f%% \n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
+
+            // decode
+            //string compressed_bitstream = read_jpg(filename);
+            compressed_bitstream = read_jpg(filename);
+            // int stream_len = compressed_bitstream.length();
+
+            // cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
+            // cout << compressed_bitstream.compare(bitstream) << endl; // the same
+
+            float*** uncompressed_img = create_3D_array(image_width);
+
+            for (int c : {0, 1, 2}) {
+                int x_pos = 0, y_pos = 0;
+                int last_DC = 0;
+
+                while (y_pos < image_width) {
+                    int bit_num = 4;
+                    int category;
+                    // create empty 8*8 block
+                    float** block = create_2D_array(n);
+
+                    // DC decode
+                    int DC = dc_decode(last_DC);
+                    last_DC = DC;
+
+                    // AC decode
+                    vector<SnakeBody> ac_snake = ac_decode();
+                    all_snakes_decode.push_back(ac_snake);
+
+
+                    // AC_run_length decode
+                    block = invert_AC_run_length(DC, ac_snake);
+
+                    // save block for debugging
+                    vector <char> temp_block(64);
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            temp_block[i * 8 + j] = block[i][j];
+                        }
+                    }
+                    all_blocks_decode.push_back(temp_block);
+
+                    // invert Quantization
+                    invert_quantize(block, QF, c);
+                    // invert dct processing
+                    idct2(block, n);
+
+                    // push 8*8 block to uncompressed image
+                    for (int i = 0; i < n; i++) {
+                        for (int j = 0; j < n; j++) {
+                            uncompressed_img[c][x_pos + i][y_pos + j] = round(block[i][j] + 128);
+                        }
+                    }
+
+                    // move to next 8*8 position
+                    x_pos += n;
+                    if (x_pos == image_width) {
+                        y_pos += n;
+                        x_pos = 0;
+                        //cout << y_pos << " ";
+                    }
+                }
+            }
+            // write uncompressed_img to .raw
+            string decode_raw_name = img_name + process_type + "_QF" + to_string(QF) + "_decoded.raw";
+            float*** RGB_img = toRGB_img(uncompressed_img);
+            write_color_img(RGB_img, decode_raw_name, image_width);
+
+            // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+            double PSNR = calculatePSNR(original_color_img, RGB_img, image_width);
+            printf("QF = %d, PSNR = %lf\n", QF, PSNR);
+            cout << endl << "output path: " << decode_raw_name << endl << endl;
+
         }
-        
-        float*** RGB_img = toRGB_img(YCbCr_img);
-        write_gray_img(RGB_img[0], img_name + process_type + "_R.raw", 512);
-        write_color_img(RGB_img, img_name + process_type + "_R.raw", 512);
+
     }
+    else {
+        // Gray level
+        float** original_img = read_raw_img(raw_name);
 
+        // encoding, scan 512 * 512 with 8 * 8 DCT
+        for (const int QF : {5, 10, 20, 50, 80, 90}) {
+            vector<vector<SnakeBody>> all_snakes_encode;
+            vector<vector<SnakeBody>> all_snakes_decode;
+            vector<vector<char>> all_blocks_encode;
+            vector<vector<char>> all_blocks_decode;
 
-    int n = 8;
-    int image_width = 512;
-    get_invert_tables();
+            int x_pos = 0, y_pos = 0;
+            int last_DC = 0;
+            string bitstream = "";
+            float** processed_img = create_2D_array(image_width);
 
-    // encoding, scan 512 * 512 with 8 * 8 DCT
-    for (const int QF : {5, 10, 20, 50, 80, 90}) {
-        vector<vector<SnakeBody>> all_snakes_encode;
-        vector<vector<SnakeBody>> all_snakes_decode;
-        vector<vector<char>> all_blocks_encode;
-        vector<vector<char>> all_blocks_decode;
+            while (y_pos < image_width) {
+                // create empty 8*8 block
+                float** block = create_2D_array(n);
 
-        int x_pos = 0, y_pos = 0;
-        int last_DC = 0;
-        string bitstream = "";
-        float** processed_img = create_2D_array(image_width);
+                //float** block = new float* [8];
+                //for (int i = 0; i < 8; ++i) {
+                //    block[i] = new float[8]; // 为每行创建 float 数组
+                //}
+                // scan 8*8 block from 512*512 image
+                for (int i = 0; i < 8; i++) {
+                    for (int j = 0; j < 8; j++) {
+                        block[i][j] = original_img[x_pos + i][y_pos + j] - 128;
+                    }
+                }
 
-        while (y_pos < image_width) {
-            // create empty 8*8 block
-            float** block = create_2D_array(n);
+                // dct processing
+                dct2(block, n);
+                // Quantization
+                quantize(block, QF, 0);
 
-            //float** block = new float* [8];
-            //for (int i = 0; i < 8; ++i) {
-            //    block[i] = new float[8]; // 为每行创建 float 数组
-            //}
-            // scan 8*8 block from 512*512 image
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    block[i][j] = original_img[x_pos + i][y_pos + j]-128;
+                // DC encode
+                int diff_DC = block[0][0] - last_DC;
+                last_DC = block[0][0];
+                string dc_codewords = DC_encode(diff_DC);
+
+                // save block for debugging
+                vector <char> temp_block(64);
+                for (int i = 0; i < 8; i++) {
+                    for (int j = 0; j < 8; j++) {
+                        temp_block[i * 8 + j] = block[i][j];
+                    }
+                }
+                all_blocks_encode.push_back(temp_block);
+
+                // AC encode
+                vector<SnakeBody> snake_vec = AC_run_length(block);
+                string ac_codewords = AC_encode(snake_vec);
+                //cout << snake_vec.size()<<endl;
+                /*for (int i = 0; i < snake_vec.size();i++) {
+                    cout << "<"<<int(snake_vec[i].zeros) << ", " << int(snake_vec[i].value) <<"> ";
+                }
+                cout << "EOF" << endl;*/
+                all_snakes_encode.push_back(snake_vec);
+                string codewords = dc_codewords + ac_codewords;
+                bitstream += codewords;
+
+                // push 8*8 block to processed image
+                for (int i = 0; i < 8; i++) {
+                    for (int j = 0; j < 8; j++) {
+                        processed_img[x_pos + i][y_pos + j] = block[i][j];
+                    }
+                }
+
+                // move to next 8*8 position
+                x_pos += 8;
+                if (x_pos == image_width) {
+                    y_pos += 8;
+                    x_pos = 0;
                 }
             }
 
-            // dct processing
-            dct2(block, n);
-            // Quantization
-            quantize(block, QF);
+            // save as .hahajpg
+            string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
+            cout << filename << endl;
+            //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
+            write_jpg(filename, bitstream);
 
-            // DC encode
-            int diff_DC = block[0][0] - last_DC;
-            last_DC = block[0][0];
-            string dc_codewords = DC_encode(diff_DC);
+            // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+            //double PSNR = calculatePSNR(original_img, processed_img, image_width);
+            //printf("QF = %d, PSNR = %lf\n", QF, PSNR);
 
-            // save block for debugging
-            vector <char> temp_block(64);
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    temp_block[i * 8 + j] = block[i][j];
+            // compare the file size
+            size_t uncompressed_file_size = image_width * image_width; // 65536
+            size_t compressed_file_size = bitstream.length() / 8; // 499680 / 8 = 62460
+
+            int uncompressed_file_kb = roundf(float(uncompressed_file_size) / 1024); //64KB
+            int compressed_file_kb = roundf(float(compressed_file_size) / 1024); //60KB
+            printf("original file size: %zd Bytes (= %d KB). \n", uncompressed_file_size, uncompressed_file_kb);
+            printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
+            printf("Space saving: %0.2f%% \n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
+
+            // decode
+            //string compressed_bitstream = read_jpg(filename);
+            compressed_bitstream = read_jpg(filename);
+            // int stream_len = compressed_bitstream.length();
+
+            // cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
+            // cout << compressed_bitstream.compare(bitstream) << endl; // the same
+
+            float** uncompressed_img = create_2D_array(image_width);
+
+            x_pos = 0, y_pos = 0;
+            last_DC = 0;
+
+            while (y_pos < image_width) {
+                int bit_num = 4;
+                int category;
+                // create empty 8*8 block
+                float** block = create_2D_array(n);
+
+                // DC decode
+                int DC = dc_decode(last_DC);
+                last_DC = DC;
+
+                // AC decode
+                vector<SnakeBody> ac_snake = ac_decode();
+                all_snakes_decode.push_back(ac_snake);
+
+
+                // AC_run_length decode
+                block = invert_AC_run_length(DC, ac_snake);
+
+                // save block for debugging
+                vector <char> temp_block(64);
+                for (int i = 0; i < 8; i++) {
+                    for (int j = 0; j < 8; j++) {
+                        temp_block[i * 8 + j] = block[i][j];
+                    }
+                }
+                all_blocks_decode.push_back(temp_block);
+
+                // invert Quantization
+                invert_quantize(block, QF, 0);
+                // invert dct processing
+                idct2(block, n);
+
+                // push 8*8 block to uncompressed image
+                for (int i = 0; i < n; i++) {
+                    for (int j = 0; j < n; j++) {
+                        uncompressed_img[x_pos + i][y_pos + j] = round(block[i][j] + 128);
+                    }
+                }
+
+                // move to next 8*8 position
+                x_pos += n;
+                if (x_pos == image_width) {
+                    y_pos += n;
+                    x_pos = 0;
+                    //cout << y_pos << " ";
                 }
             }
-            all_blocks_encode.push_back(temp_block);
+            // write uncompressed_img to .raw
+            string decode_raw_name = img_name + process_type + "_QF" + to_string(QF) + "_decoded.raw";
+            write_gray_img(uncompressed_img, decode_raw_name, image_width);
+            // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
+            double PSNR = calculatePSNR(original_img, uncompressed_img, image_width);
+            printf("QF = %d, PSNR = %lf\n", QF, PSNR);
+            cout << endl << "output path: " << decode_raw_name << endl << endl;
 
-            // AC encode
-            vector<SnakeBody> snake_vec = AC_run_length(block);
-            string ac_codewords = AC_encode(snake_vec);
-            //cout << snake_vec.size()<<endl;
-            /*for (int i = 0; i < snake_vec.size();i++) {
-                cout << "<"<<int(snake_vec[i].zeros) << ", " << int(snake_vec[i].value) <<"> ";
-            }
-            cout << "EOF" << endl;*/
-            all_snakes_encode.push_back(snake_vec);
-            string codewords = dc_codewords + ac_codewords;
-            bitstream += codewords;
+            // compare snakes
+        //    for (int i = 0; i < 64; i++) {
+        //        if (!(all_snakes_decode[i] == all_snakes_encode[i])) {
+        //            cout << endl << "decoder snake:" << endl;
+        //            cout << "size: " << all_snakes_decode[i].size() << endl;
+        //            for (int j = 0; j < all_snakes_decode[i].size(); j++) {
+        //                cout << "<" << int(all_snakes_decode[i][j].zeros) << ", " << int(all_snakes_decode[i][j].value) << "> ";
+        //            }
+        //            cout << endl;
+        //            cout << "encoder snake:" << endl;
+        //            cout << "size: " << all_snakes_encode[i].size() << endl;
+        //            for (int j = 0; j < all_snakes_encode[i].size(); j++) {
+        //                cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
+        //            }
+        //            cout << endl;
+        //        }
+        //        else {
+        //            cout << "true ";
+        //        }
+        //    }
+        //    cout << endl;
+        //    //compare blocks
+        //    for (int i = 0; i < 64; i++) {
+        //        if (!(all_blocks_decode[i] == all_blocks_encode[i])) {
+        //            cout << "encoder snake:" << endl;
+        //            cout << "size: " << all_snakes_encode[i].size() << endl;
+        //            for (int j = 0; j < all_snakes_encode[i].size(); j++) {
+        //                cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
+        //            }
+        //            cout << endl << "decoder block:" << endl;
+        //            for (int k = 0; k < 8; k++) {
+        //                for (int j = 0; j < 8; j++) {
+        //                    cout << round(all_blocks_decode[i][k * 8 + j]) << " ";
+        //                }
+        //                cout << endl;
+        //            }
+        //            cout << endl;
+        //            cout << "encoder block:" << endl;
+        //            for (int k = 0; k < 8; k++) {
+        //                for (int j = 0; j < 8; j++) {
+        //                    cout << round(all_blocks_encode[i][k * 8 + j]) << " ";
+        //                }
+        //                cout << endl;
+        //            }
+        //            cout << endl;
+        //        }
+        //        else {
+        //            cout << "true ";
+        //        }
 
-            // push 8*8 block to processed image
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    processed_img[x_pos + i][y_pos + j] = block[i][j];
-                }
-            }
-
-            // move to next 8*8 position
-            x_pos += 8;
-            if (x_pos == image_width) {
-                y_pos += 8;
-                x_pos = 0;
-            }
-        }
-
-        // save as .hahajpg
-        string filename = img_name + process_type + "_QF" + to_string(QF) + ".hahajpg";
-        cout << filename << endl;
-        //cout << "length of bitstream = " << bitstream.length() << endl;// << bitstream << endl;
-        write_jpg(filename, bitstream);
-
-        // calculate PSNR, QF=90, 80, 50, 20, 10 and 5
-        double PSNR = calculatePSNR(original_img, processed_img, image_width);
-        printf("QF = %d, PSNR = %lf\n", QF, PSNR);
-
-        // compare the file size
-        size_t uncompressed_file_size = image_width * image_width; // 65536
-        size_t compressed_file_size = bitstream.length() / 8; // 499680 / 8 = 62460
-
-        int uncompressed_file_kb = roundf(float(uncompressed_file_size) / 1024); //64KB
-        int compressed_file_kb = roundf(float(compressed_file_size) / 1024); //60KB
-        printf("original file size: %zd Bytes (= %d KB). \n", uncompressed_file_size, uncompressed_file_kb);
-        printf("compressed size is: %zd Bytes (= %d KB).\n", compressed_file_size, compressed_file_kb);
-        printf("Space saving: %0.2f%% \n", float(uncompressed_file_kb - compressed_file_kb) / float(uncompressed_file_kb) * 100);
-
-        // decode
-        //string compressed_bitstream = read_jpg(filename);
-        compressed_bitstream = read_jpg(filename);
-        // int stream_len = compressed_bitstream.length();
-
-        // cout << "length of compressed_bitstream = " << stream_len << endl;// << bitstream << endl;
-        // cout << compressed_bitstream.compare(bitstream) << endl; // the same
-
-        float** uncompressed_img = create_2D_array(image_width);
-
-        x_pos = 0, y_pos = 0;
-        last_DC = 0;
-
-        while (y_pos < image_width) {
-            int bit_num = 4;
-            int category;
-            // create empty 8*8 block
-            float** block = create_2D_array(n);
-
-            // DC decode
-            int DC = dc_decode(last_DC);
-            last_DC = DC;
-
-            // AC decode
-            vector<SnakeBody> ac_snake = ac_decode();
-            all_snakes_decode.push_back(ac_snake);
-
-
-            // AC_run_length decode
-            block = invert_AC_run_length(DC, ac_snake);
-
-            // save block for debugging
-            vector <char> temp_block(64);
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    temp_block[i * 8 + j] = block[i][j];
-                }
-            }
-            all_blocks_decode.push_back(temp_block);
-
-            // invert Quantization
-            invert_quantize(block, QF);
-            // invert dct processing
-            idct2(block, n);
-
-            // push 8*8 block to uncompressed image
-            for (int i = 0; i < n; i++) {
-                for (int j = 0; j < n; j++) {
-                    uncompressed_img[x_pos + i][y_pos + j] = round(block[i][j]+128);
-                }
-            }
-
-            // move to next 8*8 position
-            x_pos += n;
-            if (x_pos == image_width) {
-                y_pos += n;
-                x_pos = 0;
-                cout << y_pos << " ";
-            }
-        }
-        // write uncompressed_img to .raw
-        string decode_raw_name = img_name + process_type + "_QF" + to_string(QF) + "_decoded.raw";
-        write_gray_img(uncompressed_img, decode_raw_name, image_width);
-
-        cout << endl<<"output path: " << decode_raw_name << endl << endl;
-
-        // compare snakes
-        for (int i = 0; i < 64; i++) {
-            if (!(all_snakes_decode[i] == all_snakes_encode[i])) {
-                cout << endl<<"decoder snake:" << endl;
-                cout << "size: " << all_snakes_decode[i].size() << endl;
-                for (int j = 0; j < all_snakes_decode[i].size();j++) {
-                    cout << "<"<<int(all_snakes_decode[i][j].zeros) << ", " << int(all_snakes_decode[i][j].value) <<"> ";
-                }
-                cout << endl;
-                cout << "encoder snake:" << endl;
-                cout << "size: " << all_snakes_encode[i].size() << endl;
-                for (int j = 0; j < all_snakes_encode[i].size(); j++) {
-                    cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
-                }
-                cout << endl;
-            }
-            else {
-                cout << "true ";
-            }
+        //    }
+        //    cout << endl;
         }
         cout << endl;
-        //compare blocks
-        for (int i = 0; i < 64; i++) {
-            if (!(all_blocks_decode[i] == all_blocks_encode[i])) {
-                cout << "encoder snake:" << endl;
-                cout << "size: " << all_snakes_encode[i].size() << endl;
-                for (int j = 0; j < all_snakes_encode[i].size(); j++) {
-                    cout << "<" << int(all_snakes_encode[i][j].zeros) << ", " << int(all_snakes_encode[i][j].value) << "> ";
-                }
-                cout << endl << "decoder block:" << endl;
-                for (int k = 0; k < 8; k++) {
-                    for (int j = 0; j < 8; j++) {
-                        cout << round(all_blocks_decode[i][k*8+j]) << " ";
-                    }
-                    cout << endl;
-                }
-                cout << endl;
-                cout << "encoder block:" << endl;
-                for (int k = 0; k < 8; k++) {
-                    for (int j = 0; j < 8; j++) {
-                        cout << round(all_blocks_encode[i][k * 8 + j]) << " ";
-                    }
-                    cout << endl;
-                }
-                cout << endl;
-            }
-            else {
-                cout << "true ";
-            }
 
-        }
-        cout << endl;
+
     }
-    cout << endl;
-
-
-
 
     return 0;
 }
