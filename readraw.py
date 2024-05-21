@@ -25,11 +25,11 @@ def read_raw(file:str,shape:tuple,dtype):
     return data
 
 # raw_path = f"./Test Images/GrayImages/Lena.raw"
-raw_path = f"./LenaRGB_Cr.raw"
+raw_path = f"./LenaRGB_R.raw"
 img = read_raw(raw_path,(512,512,1),dtype=np.uint8)
 print(type(img))
 print(np.shape(img))
-cv2.imwrite(f"LenaRGB_Cr.jpg",img)
+cv2.imwrite(f"LenaRGB_R.jpg",img)
 
 
 for QF in [80,5, 10, 20, 50,  90]:

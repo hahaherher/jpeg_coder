@@ -25,6 +25,7 @@ struct YCbCr_Point {
     YCbCr_Point(float y, float cb, float cr) { Y = y, Cb = cb, Cr = cr; }
 };
 
+
 YCbCr_Point toYCbCr(RGB_Point p){
     float Y = 0.299 * p.R + 0.587 * p.G + 0.114 * p.B;
     float Cb = -0.16875 * p.R - 0.33126 * p.G + 0.5 * p.B;
@@ -39,6 +40,8 @@ RGB_Point toRGB(YCbCr_Point p){
     float B = p.Y + 1.772 * p.Cb;
     return RGB_Point(R, G, B);
 }
+
+
 
 float** create_2D_array(int n) {
     // 二维 float array
@@ -60,6 +63,45 @@ float*** create_3D_array(int n) {
     return array_3D;
 }
 
+
+float*** toYCbCr_img(float*** RGB_img) {
+    float*** YCbCr_img = create_3D_array(512);;
+    // convert RGB to YCbCr
+    for (int i = 0; i < 512; ++i) {
+        for (int j = 0; j < 512; ++j) {
+            for (int c = 0; c < 3; c++) {
+                float R = RGB_img[0][i][j];
+                float G = RGB_img[1][i][j];
+                float B = RGB_img[2][i][j];
+                YCbCr_Point p = toYCbCr(RGB_Point(R, G, B));
+                YCbCr_img[0][i][j] = p.Y;
+                YCbCr_img[1][i][j] = p.Cb;
+                YCbCr_img[2][i][j] = p.Cr;
+            }
+        }
+    }
+    return YCbCr_img;
+}
+
+
+float*** toRGB_img(float*** YCbCr_img) {
+    float*** RGB_img = create_3D_array(512);;
+    // convert RGB to YCbCr
+    for (int i = 0; i < 512; ++i) {
+        for (int j = 0; j < 512; ++j) {
+            for (int c = 0; c < 3; c++) {
+                float Y = YCbCr_img[0][i][j];
+                float Cb = YCbCr_img[1][i][j];
+                float Cr = YCbCr_img[2][i][j];
+                RGB_Point p = toRGB(YCbCr_Point(Y, Cb, Cr));
+                RGB_img[0][i][j] = p.R;
+                RGB_img[1][i][j] = p.G;
+                RGB_img[2][i][j] = p.B;
+            }
+        }
+    }
+    return RGB_img;
+}
 
 float*** read_color_raw_img(string file_name) {
     ifstream rawFile(file_name, ios::in | ios::binary);
@@ -95,6 +137,30 @@ float*** read_color_raw_img(string file_name) {
     return original_img;
 }
 
+
+float*** subsampling(float*** YCbCr_img, string subsampling_mode) {
+    int x_pos = 0, y_pos = 0;
+    int sub_num = subsampling_mode[subsampling_mode.length() - 1] - 48;
+    while (y_pos < 512) {
+        // scan 4*4 block from 512*512 image
+        for (int i = 0; i < 4; i++) {
+            for (int c = 1; c < 3; c++) {
+                YCbCr_img[c][x_pos + i][y_pos + 1] = 0;
+                YCbCr_img[c][x_pos + i][y_pos + 3] = 0;
+                if (sub_num == 1) {
+                    YCbCr_img[c][x_pos + i][y_pos + 2] = 0;
+                }
+            }
+        }
+        // move to next 4*4 position
+        x_pos += 4;
+        if (x_pos == 512) {
+            y_pos += 4;
+            x_pos = 0;
+        }
+    }
+    return YCbCr_img;
+}
 
 float** read_raw_img(string file_name) {
     ifstream rawFile(file_name, ios::in | ios::binary);
@@ -872,25 +938,36 @@ int main() {
     float** original_img = read_raw_img(raw_name);
     if (choice != 1) {
         float*** original_color_img = read_color_raw_img(raw_name);
-        float*** YCbCr_img = create_3D_array(512);
+        float*** YCbCr_img = toYCbCr_img(original_color_img);
         
-        // convert RGB to YCbCr
-        for (int i = 0; i < 512; ++i) {
-            for (int j = 0; j < 512; ++j) {
-                for (int c = 0; c < 3; c++) {
-                    float R = original_color_img[0][i][j];
-                    float G = original_color_img[1][i][j];
-                    float B = original_color_img[2][i][j];
-                    YCbCr_Point p = toYCbCr(RGB_Point(R, G, B));
-                    YCbCr_img[0][i][j] = p.Y;
-                    YCbCr_img[1][i][j] = p.Cb;
-                    YCbCr_img[2][i][j] = p.Cr;
-                }
-            }
-        }
         write_gray_img(YCbCr_img[0], img_name + process_type + "_Y.raw", 512);
         write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb.raw", 512);
         write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr.raw", 512);
+
+        // subsampling mode
+        cout << "4:4:4 mode: 1" << endl;
+        cout << "4:2:2 mode: 2" << endl;
+        cout << "4:1:1 mode: 3" << endl;
+        cout << "Please choose the Subsampling mode: ";
+        //cin >> choice;
+        cout << endl;
+        choice = 2;
+        string subsampling_mode;
+
+        if (choice == 2) {
+            subsampling_mode = "422";
+            YCbCr_img = subsampling(YCbCr_img, subsampling_mode);
+            write_gray_img(YCbCr_img[1], img_name + process_type + "_Cb_" + subsampling_mode + ".raw", 512);
+            write_gray_img(YCbCr_img[2], img_name + process_type + "_Cr_" + subsampling_mode + ".raw", 512);
+        }
+        else if (choice == 3) {
+            subsampling_mode = "411";
+            YCbCr_img = subsampling(YCbCr_img, subsampling_mode);
+        }
+        
+        float*** RGB_img = toRGB_img(YCbCr_img);
+        write_gray_img(RGB_img[0], img_name + process_type + "_R.raw", 512);
+        write_color_img(RGB_img, img_name + process_type + "_R.raw", 512);
     }
 
 
